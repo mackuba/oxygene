@@ -25,4 +25,8 @@ Gem::Specification.new do |spec|
   end
 
   spec.require_paths = ["lib"]
+
+  spec.add_dependency 'base32', '~> 0.3'
+  spec.add_dependency 'base64', '~> 0.1'
+  spec.add_dependency 'cbor', '~> 0.5.9'
 end
