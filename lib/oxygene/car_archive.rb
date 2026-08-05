@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative 'car_section'
 require_relative 'cid'
 require_relative 'errors'
 require_relative 'extensions'
@@ -12,19 +13,6 @@ require 'stringio'
 # multicodec codes: https://github.com/multiformats/multicodec/blob/master/table.csv
 
 module Oxygene
-  class CARSection
-    attr_reader :cid
-
-    def initialize(cid, body_data)
-      @cid = cid
-      @body_data = body_data
-    end
-
-    def body
-      @body ||= CARArchive.convert_data(CBOR.decode(@body_data))
-    end
-  end
-
   class CARArchive
     using Oxygene::Extensions
 
