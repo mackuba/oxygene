@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-RSpec.describe Oxygene do
+describe Oxygene do
   it "has a version number" do
-    expect(Oxygene::VERSION).not_to be nil
+    Oxygene::VERSION.should_not be_nil
   end
 end
