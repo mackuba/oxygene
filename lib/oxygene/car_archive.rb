@@ -85,7 +85,10 @@ module Oxygene
     end
 
     def self.make_bytes(data)
-      { '$bytes' => Base64.encode64(data).chomp.gsub(/=+$/, '') }
+      string = Base64.strict_encode64(data)
+      string.chomp!('=') while string.getbyte(-1) == 61
+
+      { '$bytes' => string }
     end
 
     def inspect
@@ -164,7 +167,7 @@ module Oxygene
 
         raise DecodeError.new("CID too short: #{cid_data}") unless cid_data.length == 36
 
-        cid_data.prepend("\x00".b)
+        cid_data.prepend(CID::BINARY_PREFIX)
         cid = CID.new(cid_data, true, true)
       else
         sbuffer = StringIO.new(section_data)

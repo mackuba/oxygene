@@ -11,17 +11,22 @@ require 'base32'
 
 module Oxygene
   class CID
+    JSON_PREFIX = 'b'
+    JSON_PREFIX_CODE = JSON_PREFIX.ord
+    BINARY_PREFIX = "\x00".b.freeze
+
+    private_constant :JSON_PREFIX_CODE
 
     def self.from_cbor_tag(tag)
       data = tag.value
-      raise DecodeError.new("Unexpected first byte of CID: #{data[0]}") unless data[0] == "\x00"
+      raise DecodeError.new("Unexpected first byte of CID: #{data[0]}") unless data.getbyte(0) == 0
 
       CID.new(data, true, true)
     end
 
     def self.from_json(string)
       raise DecodeError.new("Unexpected CID length") unless string.length == 59
-      raise DecodeError.new("Unexpected CID prefix") unless string[0] == 'b'
+      raise DecodeError.new("Unexpected CID prefix") unless string.getbyte(0) == JSON_PREFIX_CODE
 
       CID.new(string, false)
     end
@@ -33,7 +38,7 @@ module Oxygene
         if includes_prefix == true
           @binary_data = data
         else
-          @binary_data = "\x00" + data
+          @binary_data = BINARY_PREFIX + data
         end
       else
         if includes_prefix == nil || includes_prefix == true
@@ -45,11 +50,11 @@ module Oxygene
     end
 
     def data
-      @binary_data ||= "\x00" + ::Base32.decode(@json_form[1..-1].upcase)
+      @binary_data ||= BINARY_PREFIX + ::Base32.decode(@json_form[1..-1].upcase)
     end
 
     def json_form
-      @json_form ||= Oxygene::Base32.encode(@binary_data, 1, 'b')
+      @json_form ||= Oxygene::Base32.encode(@binary_data, 1, JSON_PREFIX)
     end
 
     def to_s
