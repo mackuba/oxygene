@@ -26,5 +26,43 @@ describe Oxygene::CARRepo do
       profile["$type"].should == "app.bsky.actor.profile"
       profile["displayName"].should == "Bluesky"
     end
+
+    context "given a starting CID" do
+      it "should start from a section with that CID" do
+        records = []
+        starting_cid = Oxygene::CID.from_json("bafyreiajotznusc27wzjwm3li6okuvnmdstm6ymy6bk26jqauj4qidjqfe")
+
+        repo.walk_all_nodes(starting_cid) do |key, cid|
+          records << key
+        end
+
+        records.should == [
+          'app.bsky.feed.generator/thevids',
+          'app.bsky.feed.generator/whats-hot',
+          'app.bsky.feed.like/3jt6wh3ckcc2y',
+          'app.bsky.feed.like/3jt6wh4b3tv2z',
+          'app.bsky.feed.generator/with-friends',
+        ]
+      end
+    end
+
+    context "given a starting CID as binary data string with 0 prefix" do
+      it "should start from a section with that CID" do
+        records = []
+        starting_cid = Oxygene::CID.from_json("bafyreiajotznusc27wzjwm3li6okuvnmdstm6ymy6bk26jqauj4qidjqfe")
+
+        repo.walk_all_nodes(starting_cid.data) do |key, cid|
+          records << key
+        end
+
+        records.should == [
+          'app.bsky.feed.generator/thevids',
+          'app.bsky.feed.generator/whats-hot',
+          'app.bsky.feed.like/3jt6wh3ckcc2y',
+          'app.bsky.feed.like/3jt6wh4b3tv2z',
+          'app.bsky.feed.generator/with-friends',
+        ]
+      end
+    end
   end
 end

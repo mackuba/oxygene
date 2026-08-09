@@ -25,6 +25,7 @@ module Oxygene
       @sections = []
       @section_map = {}
       @buffer = StringIO.new(data)
+      @map_needs_update = false
 
       read_header(@buffer)
     end

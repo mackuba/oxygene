@@ -22,7 +22,7 @@ module Oxygene
       # A single base32 character is one of the 32 values in the BASE32_ALPHABET string
       # above, i.e. 5 bits. The BASE32_PAIRS array stores a (flattened) 32x32 table
       # of all possible combinations of two-character pairs (10 bits).
-      # 
+      #
       # Instead of taking the 40 bits of a 5-byte slice of the original string, slicing
       # it into 8 5-bit pieces and looking up 8 separate base32 characters, we process
       # 10 bits at a time here, looking up 4 two-character pairs. This allows us to do

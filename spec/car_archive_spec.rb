@@ -87,6 +87,14 @@ describe Oxygene::CARArchive do
       sections.last.cid.should == archive.roots.first
     end
 
+    it "should free the data buffer for GC cleanup" do
+      archive.instance_variable_get(:@buffer).should_not be_nil
+
+      sections = archive.sections
+
+      archive.instance_variable_get(:@buffer).should be_nil
+    end
+
     it "should reject truncated sections" do
       truncated_data = fixture_data.byteslice(0, fixture_data.bytesize - 1)
       truncated_archive = Oxygene::CARArchive.new(truncated_data)
@@ -133,6 +141,27 @@ describe Oxygene::CARArchive do
 
       expect { truncated_archive.sections }.to raise_error(Oxygene::DecodeError, /CID too short/)
     end
+
+    it "should reject a non-canonically encoded CID prefix" do
+      cid_body = "\x00".b * 32
+      dag_cbor_codec = "\x71".b
+      sha256_multihash = "\x12\x20".b + cid_body
+      canonical_cid = "\x00\x01".b + dag_cbor_codec + sha256_multihash
+
+      header = CBOR.encode({
+        "roots" => [CBOR::Tagged.new(42, canonical_cid)],
+        "version" => 1
+      })
+
+      # 81 00 is a non-canonical but technically valid two-byte varint encoding of the CID version 1
+      weird_version_tag = "\x81\x00".b
+      section = weird_version_tag + dag_cbor_codec + sha256_multihash + CBOR.encode({})
+
+      archive_data = [header.bytesize].pack("C") + header + [section.bytesize].pack("C") + section
+      archive = Oxygene::CARArchive.new(archive_data)
+
+      expect { archive.sections }.to raise_error(Oxygene::UnsupportedError, "Non-canonical CID prefix")
+    end
   end
 
   describe "#section_with_cid" do
@@ -143,10 +172,62 @@ describe Oxygene::CARArchive do
       body.should be_a(Hash)
     end
 
-    it "should return nil when the CID is not in the archive" do
-      missing_cid = Oxygene::CID.from_json("bafyreihsl77homddrramzhzdrgfneatthwnlz47ikzy4mezxz7kxndmjsm")
+    context "with return_body: true" do
+      it "should find a section with given CID and return its body" do
+        cid = Oxygene::CID.from_json(record_cid)
 
-      archive.section_with_cid(missing_cid).should be_nil
+        body = archive.section_with_cid(cid, return_body: true)
+        body.should be_a(Hash)
+      end
+
+      it "should return the body converted to ATProto JSON representation" do
+        root = archive.section_with_cid(archive.roots.first)
+
+        root["did"].should == "did:plc:rnpkyqnmsw4ipey6eotbdnnf"
+        root["rev"].should == "3msigk4u5hz2z"
+        root["version"].should == 3
+        root["prev"].should be_nil
+        root["data"].should == { "$link" => Oxygene::CID.from_json(data_cid) }
+        root["sig"].keys.should == ["$bytes"]
+        Base64.decode64(root["sig"]["$bytes"]).bytesize.should == 64
+      end
+    end
+
+    context "with return_body: false" do
+      it "should find a section with given CID and return the section object" do
+        cid = Oxygene::CID.from_json(record_cid)
+
+        section = archive.section_with_cid(cid, return_body: false)
+        section.should be_a(Oxygene::CARSection)
+        section.cid.should == cid
+      end
+    end
+
+    it "should also accept CID binary data as a string" do
+      cid = Oxygene::CID.from_json(record_cid)
+
+      section = archive.section_with_cid(cid.data, return_body: false)
+      section.should_not be_nil
+      section.cid.should == cid
+
+      section2 = archive.section_with_cid(cid.data, return_body: false)
+      section2.should equal(section)
+    end
+
+    context "when the CID is not in the archive" do
+      let(:missing_cid) { Oxygene::CID.from_json("bafyreihsl77homddrramzhzdrgfneatthwnlz47ikzy4mezxz7kxndmjsm") }
+
+      it "should return nil" do
+        archive.section_with_cid(missing_cid).should be_nil
+      end
+
+      it "should free the data buffer for GC cleanup" do
+        archive.instance_variable_get(:@buffer).should_not be_nil
+
+        archive.section_with_cid(missing_cid)
+
+        archive.instance_variable_get(:@buffer).should be_nil
+      end
     end
 
     it "should decode the firehose record body" do
@@ -160,16 +241,161 @@ describe Oxygene::CARArchive do
       }
     end
 
-    it "should convert CID links and byte strings in section data" do
-      root = archive.section_with_cid(archive.roots.first)
+    context "with use_map: true" do
+      let(:early_cid) { Oxygene::CID.from_json("bafyreihglybf3ix6ctig27d53547wrc4zwcohkah76hq55nohacsdacfm4") }
 
-      root["did"].should == "did:plc:rnpkyqnmsw4ipey6eotbdnnf"
-      root["rev"].should == "3msigk4u5hz2z"
-      root["version"].should == 3
-      root["prev"].should be_nil
-      root["data"].should == { "$link" => Oxygene::CID.from_json(data_cid) }
-      root["sig"].keys.should == ["$bytes"]
-      Base64.decode64(root["sig"]["$bytes"]).bytesize.should == 64
+      let(:loaded_sections) { archive.instance_variable_get(:@sections) }
+      let(:section_map) { archive.instance_variable_get(:@section_map) }
+
+      def map_needs_update
+        archive.instance_variable_get(:@map_needs_update)
+      end
+
+      it "should add lazily parsed sections to the map" do
+        section = archive.section_with_cid(early_cid, use_map: true, return_body: false)
+        section.should_not be_nil
+
+        loaded_sections.length.should == 3
+        section_map.values.should == loaded_sections
+        section_map[early_cid.data].should equal(section)
+      end
+
+      context "if some sections were earlier parsed without being added to map" do
+        it "should update the map on next call with use_map" do
+          # loading some sections with use_map
+          s = archive.section_with_cid(early_cid, use_map: true)
+          s.should_not be_nil
+
+          # loading some more without use_map
+          record_section = archive.section_with_cid(Oxygene::CID.from_json(record_cid), return_body: false)
+          record_section.should_not be_nil
+
+          loaded_sections.length.should == 10
+          section_map.length.should == 3
+          map_needs_update.should == true
+
+          # map should be updated and used for lookup
+          section = archive.section_with_cid(record_section.cid, use_map: true, return_body: false)
+          section.should equal(record_section)
+
+          section_map.length.should == 10
+          section_map[record_section.cid.data].should equal(record_section)
+          map_needs_update.should == false
+        end
+      end
+
+      context "after a call to #sections loads all sections" do
+        it "should update the map on next call with use_map" do
+          # loading some sections with use_map
+          s = archive.section_with_cid(early_cid, use_map: true)
+          s.should_not be_nil
+
+          # archive.sections loads the rest, without map
+          archive.sections
+
+          loaded_sections.length.should == 11
+          section_map.length.should == 3
+          map_needs_update.should == true
+
+          # map should be updated and used for lookup
+          root = archive.section_with_cid(archive.roots.first, use_map: true, return_body: false)
+          root.should_not be_nil
+
+          section_map.length.should == 11
+          section_map[archive.roots.first.data].should equal(root)
+          map_needs_update.should == false
+        end
+
+        it "should not mark the map as dirty if sections were already all loaded" do
+          # load up to last section
+          s = archive.section_with_cid(Oxygene::CID.from_json(root_cid), use_map: true)
+          s.should_not be_nil
+
+          # archive.sections finds eof
+          archive.sections
+
+          map_needs_update.should == false
+        end
+
+        it "should not mark the map as dirty on second call to sections" do
+          # loading some sections with use_map
+          s = archive.section_with_cid(early_cid, use_map: true)
+          s.should_not be_nil
+
+          # archive.sections loads the rest, without map
+          archive.sections
+
+          # force map refresh
+          s = archive.section_with_cid(early_cid, use_map: true)
+          s.should_not be_nil
+
+          archive.sections
+          map_needs_update.should == false
+        end
+      end
+
+      it "should also accept CID binary data as a string" do
+        cid = Oxygene::CID.from_json(record_cid)
+
+        section = archive.section_with_cid(cid.data, use_map: true, return_body: false)
+        section.should_not be_nil
+        section.cid.should == cid
+
+        section2 = archive.section_with_cid(cid.data, use_map: true, return_body: false)
+        section2.should equal(section)
+      end
+    end
+
+    context "with use_map: false" do
+      let(:early_cid) { Oxygene::CID.from_json("bafyreihglybf3ix6ctig27d53547wrc4zwcohkah76hq55nohacsdacfm4") }
+
+      let(:loaded_sections) { archive.instance_variable_get(:@sections) }
+      let(:section_map) { archive.instance_variable_get(:@section_map) }
+
+      it "should not add parsed sections to the map" do
+        section = archive.section_with_cid(early_cid, use_map: false, return_body: false)
+        section.should_not be_nil
+
+        loaded_sections.length.should == 3
+        section_map.length.should == 0
+      end
+
+      it "should not use the map for lookup" do
+        section = archive.section_with_cid(early_cid, use_map: false, return_body: false)
+        section.should_not be_nil
+
+        record_section = archive.section_with_cid(Oxygene::CID.from_json(record_cid), use_map: false, return_body: false)
+        record_section.should_not be_nil
+
+        section2 = archive.section_with_cid(early_cid, use_map: false, return_body: false)
+        section2.should equal(section)
+
+        loaded_sections.length.should == 10
+        section_map.length.should == 0
+      end
+    end
+  end
+
+  describe ".make_bytes" do
+    it "should convert a binary string to a JSON representation with Base64 encoding" do
+      binary = "base64".b
+
+      Oxygene::CARArchive.make_bytes(binary).should == { "$bytes" => "YmFzZTY0" }
+    end
+
+    it "should include no '=' padding" do
+      binary = "\xEB\e8Z\xE1\xDC\x8F\xE1\xBA\xD3\xB9\xF4\xF7P\x89\x01".b
+
+      Oxygene::CARArchive.make_bytes(binary).should == { "$bytes" => "6xs4WuHcj+G607n091CJAQ" }
+    end
+
+    it "should remove intermediate newlines from longer Base64 data" do
+      data = "a".b * 64
+      base64_string = Base64.encode64(data)
+      base64_string.chomp.should include("\n")
+
+      output = Oxygene::CARArchive.make_bytes(data)
+      output.should == { '$bytes' => base64_string.gsub(/\n/, '').gsub(/=+$/, '') }
     end
   end
 end
