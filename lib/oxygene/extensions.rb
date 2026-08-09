@@ -27,8 +27,16 @@ module Oxygene
 
     refine CBOR.singleton_class do
       def decode_sequence(data)
-        unpacker = CBOR::Unpacker.new(StringIO.new(data))
-        unpacker.each.to_a
+        unpacker = CBOR::Unpacker.new
+        unpacker.feed(data)
+
+        items = []
+
+        while !unpacker.buffer.empty?
+          items << unpacker.read
+        end
+
+        items
       end
     end
 
