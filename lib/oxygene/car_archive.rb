@@ -16,6 +16,9 @@ module Oxygene
   class CARArchive
     using Oxygene::Extensions
 
+    SECTION_PREFIX = "\x01\x71\x12\x20".b.freeze
+    private_constant :SECTION_PREFIX
+
     attr_reader :roots, :sections
 
     def initialize(data)
@@ -155,31 +158,36 @@ module Oxygene
       section_data = buffer.read(len)
       raise DecodeError.new("Section too short: #{section_data}") unless section_data.length == len
 
-      sbuffer = StringIO.new(section_data)
+      if section_data.start_with?(SECTION_PREFIX)
+        cid_data = section_data.byteslice(0, 36)
+        body_data = section_data.byteslice(36..)
 
-      version = sbuffer.read_varint
-      raise UnsupportedError.new("Unexpected CID version: #{version}") unless version == 1
+        raise DecodeError.new("CID too short: #{cid_data}") unless cid_data.length == 36
 
-      codec = sbuffer.read_varint
-      raise UnsupportedError.new("Unexpected CID codec: #{codec}") unless codec == 0x71  # dag-cbor
+        cid_data.prepend("\x00".b)
+        cid = CID.new(cid_data, true, true)
+      else
+        sbuffer = StringIO.new(section_data)
 
-      hash = sbuffer.read_varint
-      raise UnsupportedError.new("Unexpected CID hash: #{hash}") unless hash == 0x12  # sha2-256
+        version = sbuffer.read_varint
+        raise UnsupportedError.new("Unexpected CID version: #{version}") unless version == 1
 
-      clen = sbuffer.read_varint
-      raise UnsupportedError.new("Unexpected CID length: #{clen}") unless clen == 32
+        codec = sbuffer.read_varint
+        raise UnsupportedError.new("Unexpected CID codec: #{codec}") unless codec == 0x71  # dag-cbor
 
-      prefix = section_data[0...sbuffer.pos]
+        hash = sbuffer.read_varint
+        raise UnsupportedError.new("Unexpected CID hash: #{hash}") unless hash == 0x12  # sha2-256
 
-      cid_data = sbuffer.read(clen)
-      raise DecodeError.new("CID too short: #{cid_data}") unless cid_data.length == clen
+        clen = sbuffer.read_varint
+        raise UnsupportedError.new("Unexpected CID length: #{clen}") unless clen == 32
 
-      cid = CID.new(prefix + cid_data)
+        raise UnsupportedError.new("Non-canonical CID prefix")
+      end
 
-      body_data = sbuffer.read
       new_section = CARSection.new(cid, body_data)
 
       @sections << new_section
+
       new_section
     end
   end
