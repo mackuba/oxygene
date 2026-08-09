@@ -20,30 +20,31 @@ module Oxygene
 
     def initialize(data)
       @sections = []
+      @section_map = {}
       @buffer = StringIO.new(data)
 
       read_header(@buffer)
     end
 
-    def section_with_cid(cid)
-      if section = @sections.detect { |s| s.cid == cid }
-        return section.body
+    def section_with_cid(cid, use_map: false, return_body: true)
+      if found_section = find_parsed_section(cid, use_map)
+        return (return_body ? found_section.json_body : found_section)
       end
 
-      if @buffer
-        while !@buffer.eof?
-          section = read_section(@buffer)
-          return section.body if section.cid == cid
-        end
+      if found_section = parse_sections_until_match(cid, use_map)
+        return (return_body ? found_section.json_body : found_section)
       end
 
-      @buffer = nil
       nil
     end
 
     def sections
       if @buffer
-        read_section(@buffer) while !@buffer.eof?
+        if !@buffer.eof?
+          read_section(@buffer) while !@buffer.eof?
+          @map_needs_update = true
+        end
+
         @buffer = nil
       end
 
@@ -85,7 +86,7 @@ module Oxygene
     end
 
     def inspect
-      vars = instance_variables.map { |v|
+      vars = (instance_variables - [:@section_map]).map { |v|
         if v == :@sections && @buffer
           "#{v}=[...]"
         else
@@ -97,6 +98,45 @@ module Oxygene
     end
 
     private
+
+    def find_parsed_section(cid, use_map)
+      if use_map
+        if @map_needs_update
+          @sections.each { |s| @section_map[s.cid.data] ||= s }
+          @map_needs_update = false
+        end
+
+        key = cid.is_a?(CID) ? cid.data : cid
+        @section_map[key]
+      else
+        if cid.is_a?(CID)
+          @sections.detect { |s| s.cid == cid }
+        else
+          @sections.detect { |s| s.cid.data == cid }
+        end
+      end
+    end
+
+    def parse_sections_until_match(cid, use_map)
+      return if @buffer.nil?
+
+      is_cid = cid.is_a?(CID)
+
+      while !@buffer.eof?
+        section = read_section(@buffer)
+
+        if use_map
+          @section_map[section.cid.data] = section
+        else
+          @map_needs_update = true
+        end
+
+        match = is_cid ? section.cid == cid : section.cid.data == cid
+        return section if match
+      end
+
+      @buffer = nil
+    end
 
     def read_header(buffer)
       len = buffer.read_varint

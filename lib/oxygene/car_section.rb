@@ -5,15 +5,21 @@ require 'cbor'
 
 module Oxygene
   class CARSection
-    attr_reader :cid
+    attr_reader :cid, :data
 
-    def initialize(cid, body_data)
+    def initialize(cid, data)
       @cid = cid
-      @body_data = body_data
+      @data = data
     end
 
-    def body
-      @body ||= CARArchive.convert_data(CBOR.decode(@body_data))
+    def decoded_body
+      @decoded_body ||= CBOR.decode(@data)
     end
+
+    def json_body
+      @json_body ||= CARArchive.convert_data(CBOR.decode(@data))
+    end
+
+    alias body json_body
   end
 end
