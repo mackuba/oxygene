@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative 'base32'
 require_relative 'errors'
 
 require 'base32'
@@ -44,11 +45,11 @@ module Oxygene
     end
 
     def data
-      @binary_data ||= "\x00" + Base32.decode(@json_form[1..-1].upcase)
+      @binary_data ||= "\x00" + ::Base32.decode(@json_form[1..-1].upcase)
     end
 
     def json_form
-      @json_form ||= 'b' + Base32.encode(@binary_data[1..-1]).downcase.gsub(/=+$/, '')
+      @json_form ||= Oxygene::Base32.encode(@binary_data, 1, 'b')
     end
 
     def to_s
