@@ -22,7 +22,7 @@ describe Oxygene::CID do
         tag = CBOR::Tagged.new(42, ("\x00".b + data).freeze)
 
         cid = Oxygene::CID.from_cbor_tag(tag)
-        cid.data.should == data
+        cid.data.should == tag.value
         cid.should == Oxygene::CID.from_json(string)
       end
     end
@@ -40,8 +40,13 @@ describe Oxygene::CID do
       test_cids.each do |string, data|
         cid = Oxygene::CID.from_json(string)
 
-        cid.data.should == data
+        cid.data.should == "\x00".b + data
         cid.to_s.should == string
+
+        cid = Oxygene::CID.from_json(string)
+
+        cid.to_s.should == string
+        cid.data.should == "\x00".b + data
       end
     end
 
@@ -62,7 +67,7 @@ describe Oxygene::CID do
     it "should accept binary data without the \\x00 prefix" do
       test_cids.each do |string, data|
         cid = Oxygene::CID.new(data)
-        cid.data.should == data
+        cid.data.should == "\x00".b + data
         cid.should == Oxygene::CID.from_json(string)
       end
     end
@@ -90,7 +95,7 @@ describe Oxygene::CID do
   describe "#==" do
     it "should compare CID data" do
       first = Oxygene::CID.from_json(test_cids[0][0])
-      same = Oxygene::CID.new(first.data.dup)
+      same = Oxygene::CID.new(first.data.dup, true, true)
       different = Oxygene::CID.from_json(test_cids[1][0])
 
       (first == same).should == true
