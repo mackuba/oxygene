@@ -14,6 +14,9 @@ module Oxygene
 
     def self.encode(data, start_offset = 0, prefix = "")
       total_size = data.bytesize
+      raise ArgumentError, "Start offset can't be negative" if start_offset < 0
+      raise ArgumentError, "Start offset is larger than the length of data" if start_offset > total_size
+
       size = total_size - start_offset
       output = prefix.dup
       offset = start_offset

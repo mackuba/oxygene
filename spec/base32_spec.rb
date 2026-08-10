@@ -46,5 +46,13 @@ describe Oxygene::Base32 do
     it "should return only the prefix when the offset is at the end" do
       Oxygene::Base32.encode("foobar", 6, "b").should == "b"
     end
+
+    it "should reject a negative start offset" do
+      expect { Oxygene::Base32.encode("test", -1) }.to raise_error(ArgumentError, "Start offset can't be negative")
+    end
+
+    it "should reject a start offset past the end" do
+      expect { Oxygene::Base32.encode("test", 5) }.to raise_error(ArgumentError, "Start offset is larger than the length of data")
+    end
   end
 end
