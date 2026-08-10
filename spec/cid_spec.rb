@@ -102,6 +102,16 @@ describe Oxygene::CID do
       cid.json_form.should == string
     end
 
+    it "should freeze the binary data it stores without copying it" do
+      data = ("\x00".b + test_cids.first.last).dup
+      cid = Oxygene::CID.new(data, true, true)
+
+      cid.data.should equal(data)
+      cid.data.should be_frozen
+
+      expect { data.setbyte(0, 1) }.to raise_error(FrozenError)
+    end
+
     it "should accept binary data explicitly marked as not including the prefix" do
       string, data = test_cids.first
       cid = Oxygene::CID.new(data, true, false)
@@ -138,6 +148,16 @@ describe Oxygene::CID do
       end
     end
 
+    it "should freeze the JSON data it stores without copying it" do
+      string = test_cids.first.first.dup
+      cid = Oxygene::CID.new(string, false)
+
+      cid.json_form.should equal(string)
+      cid.json_form.should be_frozen
+
+      expect { string.setbyte(0, "z".ord) }.to raise_error(FrozenError)
+    end
+
     it "should reject JSON data with includes_prefix = false" do
       string = test_cids.first.first
 
@@ -172,6 +192,15 @@ describe Oxygene::CID do
       cid = Oxygene::CID.new(string, false)
       cid.data.should == "\x00".b + data
     end
+
+    it "should freeze generated binary data" do
+      cid = Oxygene::CID.new(test_cids.first.first, false)
+
+      cid.data.should be_frozen
+      cid.data.should equal(cid.data)
+
+      expect { cid.data.setbyte(0, 1) }.to raise_error(FrozenError)
+    end
   end
 
   describe "#json_form" do
@@ -187,6 +216,15 @@ describe Oxygene::CID do
 
       cid = Oxygene::CID.new(string, false)
       cid.json_form.should equal(string)
+    end
+
+    it "should freeze generated JSON data" do
+      cid = Oxygene::CID.new(test_cids.first.last)
+
+      cid.json_form.should be_frozen
+      cid.json_form.should equal(cid.json_form)
+
+      expect { cid.json_form.setbyte(0, "z".ord) }.to raise_error(FrozenError)
     end
   end
 

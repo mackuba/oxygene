@@ -36,13 +36,13 @@ module Oxygene
 
       if binary_form
         if includes_prefix == true
-          @binary_data = data
+          @binary_data = data.freeze
         else
-          @binary_data = BINARY_PREFIX + data
+          @binary_data = (BINARY_PREFIX + data).freeze
         end
       else
         if includes_prefix == nil || includes_prefix == true
-          @json_form = data
+          @json_form = data.freeze
         else
           raise ArgumentError.new("CID currently doesn't support binary_form = false with includes_prefix = false")
         end
@@ -50,11 +50,11 @@ module Oxygene
     end
 
     def data
-      @binary_data ||= BINARY_PREFIX + ::Base32.decode(@json_form[1..-1].upcase)
+      @binary_data ||= (BINARY_PREFIX + ::Base32.decode(@json_form[1..-1].upcase)).freeze
     end
 
     def json_form
-      @json_form ||= Oxygene::Base32.encode(@binary_data, 1, JSON_PREFIX)
+      @json_form ||= Oxygene::Base32.encode(@binary_data, 1, JSON_PREFIX).freeze
     end
 
     def to_s
