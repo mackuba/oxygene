@@ -10,7 +10,7 @@ module Oxygene
         cid = root_section['data'].value
         return walk_all_nodes(cid, &block)
       elsif starting_node_cid.is_a?(CID)
-        starting_node_cid = starting_node_cid.data
+        starting_node_cid = starting_node_cid.cbor_form
       end
 
       data = section_with_cid(starting_node_cid, use_map: true, return_body: false).decoded_body

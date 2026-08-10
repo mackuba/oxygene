@@ -206,11 +206,11 @@ describe Oxygene::CARArchive do
     it "should also accept CID binary data as a string" do
       cid = Oxygene::CID.from_json(record_cid)
 
-      section = archive.section_with_cid(cid.data, return_body: false)
+      section = archive.section_with_cid(cid.cbor_form, return_body: false)
       section.should_not be_nil
       section.cid.should == cid
 
-      section2 = archive.section_with_cid(cid.data, return_body: false)
+      section2 = archive.section_with_cid(cid.cbor_form, return_body: false)
       section2.should equal(section)
     end
 
@@ -257,7 +257,7 @@ describe Oxygene::CARArchive do
 
         loaded_sections.length.should == 3
         section_map.values.should == loaded_sections
-        section_map[early_cid.data].should equal(section)
+        section_map[early_cid.cbor_form].should equal(section)
       end
 
       context "if some sections were earlier parsed without being added to map" do
@@ -279,7 +279,7 @@ describe Oxygene::CARArchive do
           section.should equal(record_section)
 
           section_map.length.should == 10
-          section_map[record_section.cid.data].should equal(record_section)
+          section_map[record_section.cid.cbor_form].should equal(record_section)
           map_needs_update.should == false
         end
       end
@@ -302,7 +302,7 @@ describe Oxygene::CARArchive do
           root.should_not be_nil
 
           section_map.length.should == 11
-          section_map[archive.roots.first.data].should equal(root)
+          section_map[archive.roots.first.cbor_form].should equal(root)
           map_needs_update.should == false
         end
 
@@ -337,11 +337,11 @@ describe Oxygene::CARArchive do
       it "should also accept CID binary data as a string" do
         cid = Oxygene::CID.from_json(record_cid)
 
-        section = archive.section_with_cid(cid.data, use_map: true, return_body: false)
+        section = archive.section_with_cid(cid.cbor_form, use_map: true, return_body: false)
         section.should_not be_nil
         section.cid.should == cid
 
-        section2 = archive.section_with_cid(cid.data, use_map: true, return_body: false)
+        section2 = archive.section_with_cid(cid.cbor_form, use_map: true, return_body: false)
         section2.should equal(section)
       end
     end

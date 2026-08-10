@@ -109,17 +109,17 @@ module Oxygene
     def find_parsed_section(cid, use_map)
       if use_map
         if @map_needs_update
-          @sections.each { |s| @section_map[s.cid.data] ||= s }
+          @sections.each { |s| @section_map[s.cid.cbor_form] ||= s }
           @map_needs_update = false
         end
 
-        key = cid.is_a?(CID) ? cid.data : cid
+        key = cid.is_a?(CID) ? cid.cbor_form : cid
         @section_map[key]
       else
         if cid.is_a?(CID)
           @sections.detect { |s| s.cid == cid }
         else
-          @sections.detect { |s| s.cid.data == cid }
+          @sections.detect { |s| s.cid.cbor_form == cid }
         end
       end
     end
@@ -133,12 +133,12 @@ module Oxygene
         section = read_section(@buffer)
 
         if use_map
-          @section_map[section.cid.data] = section
+          @section_map[section.cid.cbor_form] = section
         else
           @map_needs_update = true
         end
 
-        match = is_cid ? section.cid == cid : section.cid.data == cid
+        match = is_cid ? section.cid == cid : section.cid.cbor_form == cid
         return section if match
       end
 

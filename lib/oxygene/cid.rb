@@ -36,9 +36,9 @@ module Oxygene
 
       if binary_form
         if includes_prefix == true
-          @binary_data = data.freeze
+          @cbor_form = data.freeze
         else
-          @binary_data = (BINARY_PREFIX + data).freeze
+          @cbor_form = (BINARY_PREFIX + data).freeze
         end
       else
         if includes_prefix == nil || includes_prefix == true
@@ -49,12 +49,22 @@ module Oxygene
       end
     end
 
-    def data
-      @binary_data ||= (BINARY_PREFIX + ::Base32.decode(@json_form[1..-1].upcase)).freeze
+    def cbor_form
+      @cbor_form ||= ::Base32.decode(@json_form[1..-1].upcase).prepend(BINARY_PREFIX).freeze
     end
 
+    def raw_data
+      @raw_data ||= if @cbor_form
+        @cbor_form.byteslice(1, @cbor_form.bytesize - 1).freeze
+      else
+        ::Base32.decode(@json_form[1..-1].upcase).freeze
+      end
+    end
+
+    alias data raw_data
+
     def json_form
-      @json_form ||= Oxygene::Base32.encode(@binary_data, 1, JSON_PREFIX).freeze
+      @json_form ||= Oxygene::Base32.encode(@cbor_form, 1, JSON_PREFIX).freeze
     end
 
     def to_s
@@ -68,19 +78,19 @@ module Oxygene
     def ==(other)
       return false unless other.is_a?(CID)
 
-      if @binary_data && (other_data = other.instance_variable_get('@binary_data'))
-        @binary_data == other_data
+      if @cbor_form && (other_cbor = other.instance_variable_get('@cbor_form'))
+        @cbor_form == other_cbor
       elsif @json_form && (other_json = other.instance_variable_get('@json_form'))
         @json_form == other_json
       else
-        self.data == other.data
+        self.cbor_form == other.cbor_form
       end
     end
 
     alias eql? ==
 
     def hash
-      self.data.hash
+      cbor_form.hash
     end
   end
 end

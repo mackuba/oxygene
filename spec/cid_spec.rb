@@ -22,7 +22,8 @@ describe Oxygene::CID do
         tag = CBOR::Tagged.new(42, ("\x00".b + data).freeze)
 
         cid = Oxygene::CID.from_cbor_tag(tag)
-        cid.data.should == tag.value
+        cid.cbor_form.should == tag.value
+        cid.raw_data.should == data
         cid.should == Oxygene::CID.from_json(string)
       end
     end
@@ -39,7 +40,7 @@ describe Oxygene::CID do
       tag = CBOR::Tagged.new(42, ("\x00".b + data).freeze)
 
       cid = Oxygene::CID.from_cbor_tag(tag)
-      cid.instance_variable_get('@binary_data').should == tag.value
+      cid.instance_variable_get('@cbor_form').should == tag.value
     end
 
     it "should not generate JSON form until needed" do
@@ -59,13 +60,13 @@ describe Oxygene::CID do
       test_cids.each do |string, data|
         cid = Oxygene::CID.from_json(string)
 
-        cid.data.should == "\x00".b + data
+        cid.cbor_form.should == "\x00".b + data
         cid.to_s.should == string
 
         cid = Oxygene::CID.from_json(string)
 
         cid.to_s.should == string
-        cid.data.should == "\x00".b + data
+        cid.cbor_form.should == "\x00".b + data
       end
     end
 
@@ -81,14 +82,21 @@ describe Oxygene::CID do
       expect { Oxygene::CID.from_json(string) }.to raise_error(Oxygene::DecodeError)
     end
 
-    it "should not generate binary form until needed" do
+    it "should not generate raw or CBOR form until needed" do
       string = test_cids.first.first
 
       cid = Oxygene::CID.from_json(string)
-      cid.instance_variable_get('@binary_data').should be_nil
+      cid.instance_variable_get('@raw_data').should be_nil
+      cid.instance_variable_get('@cbor_form').should be_nil
 
-      cid.data
-      cid.instance_variable_get('@binary_data').should_not be_nil
+      cid.cbor_form
+
+      cid.instance_variable_get('@raw_data').should be_nil
+      cid.instance_variable_get('@cbor_form').should_not be_nil
+
+      cid.raw_data
+
+      cid.instance_variable_get('@raw_data').should_not be_nil
     end
   end
 
@@ -98,16 +106,17 @@ describe Oxygene::CID do
       prefixed_data = "\x00".b + data
       cid = Oxygene::CID.new(prefixed_data, true, true)
 
-      cid.data.should == prefixed_data
+      cid.cbor_form.should == prefixed_data
+      cid.raw_data.should == data
       cid.json_form.should == string
     end
 
-    it "should freeze the binary data it stores without copying it" do
+    it "should freeze the CBOR data it stores without copying it" do
       data = ("\x00".b + test_cids.first.last).dup
       cid = Oxygene::CID.new(data, true, true)
 
-      cid.data.should equal(data)
-      cid.data.should be_frozen
+      cid.cbor_form.should equal(data)
+      cid.cbor_form.should be_frozen
 
       expect { data.setbyte(0, 1) }.to raise_error(FrozenError)
     end
@@ -116,7 +125,8 @@ describe Oxygene::CID do
       string, data = test_cids.first
       cid = Oxygene::CID.new(data, true, false)
 
-      cid.data.should == "\x00".b + data
+      cid.raw_data.should == data
+      cid.cbor_form.should == "\x00".b + data
       cid.json_form.should == string
     end
 
@@ -124,7 +134,8 @@ describe Oxygene::CID do
       string, data = test_cids.first
       cid = Oxygene::CID.new(data, true)
 
-      cid.data.should == "\x00".b + data
+      cid.raw_data.should == data
+      cid.cbor_form.should == "\x00".b + data
       cid.json_form.should == string
     end
 
@@ -132,7 +143,8 @@ describe Oxygene::CID do
       test_cids.each do |string, data|
         cid = Oxygene::CID.new(data)
 
-        cid.data.should == "\x00".b + data
+        cid.raw_data.should == data
+        cid.cbor_form.should == "\x00".b + data
         cid.json_form.should == string
       end
     end
@@ -144,7 +156,8 @@ describe Oxygene::CID do
         cid = Oxygene::CID.new(string, false, includes_prefix)
 
         cid.json_form.should == string
-        cid.data.should == "\x00".b + data
+        cid.raw_data.should == data
+        cid.cbor_form.should == "\x00".b + data
       end
     end
 
@@ -171,35 +184,96 @@ describe Oxygene::CID do
     end
   end
 
+  describe "#cbor_form" do
+    context "for CIDs created from CBOR data" do
+      it "should return input CBOR data unchanged" do
+        data = "\x00".b + test_cids.first.last
+
+        cid = Oxygene::CID.new(data, true, true)
+        cid.cbor_form.should equal(data)
+        cid.cbor_form.should equal(cid.cbor_form)
+        cid.cbor_form.should be_frozen
+
+        expect { cid.cbor_form.setbyte(0, 1) }.to raise_error(FrozenError)
+      end      
+    end
+
+    context "for CIDs created from binary data without prefix" do
+      it "should add the 0 prefix" do
+        data = test_cids.first.last
+
+        cid = Oxygene::CID.new(data, true)
+        cid.cbor_form.should == "\x00".b + data
+
+        cid.cbor_form.should be_frozen
+        cid.cbor_form.should equal(cid.cbor_form)
+
+        expect { cid.cbor_form.setbyte(0, 1) }.to raise_error(FrozenError)
+      end      
+    end
+
+    context "for CIDs created from JSON data" do
+      it "should decode JSON to CBOR data" do
+        string, data = test_cids.first
+
+        cid = Oxygene::CID.new(string, false)
+        cid.cbor_form.should == "\x00".b + data
+
+        cid.cbor_form.should be_frozen
+        cid.cbor_form.should equal(cid.cbor_form)
+
+        expect { cid.cbor_form.setbyte(0, 1) }.to raise_error(FrozenError)
+      end      
+    end
+  end
+
+  describe "#raw_data" do
+    context "for CIDs created from CBOR data" do
+      it "should return input raw data unchanged" do
+        data = test_cids.first.last
+
+        cid = Oxygene::CID.new("\x00".b + data, true, true)
+        cid.raw_data.should == data
+        cid.raw_data.should equal(cid.raw_data)
+        cid.raw_data.should be_frozen
+
+        expect { cid.raw_data.setbyte(0, 1) }.to raise_error(FrozenError)
+      end
+    end
+
+    context "for CIDs created from binary data without prefix" do
+      it "should remove the 0 prefix from CBOR data" do
+        data = test_cids.first.last.dup
+        cid = Oxygene::CID.new(data)
+
+        cid.raw_data.should == data
+        cid.raw_data.should equal(cid.raw_data)
+        cid.raw_data.should be_frozen
+
+        expect { cid.raw_data.setbyte(0, 1) }.to raise_error(FrozenError)
+      end
+    end
+
+    context "for CIDs created from JSON data" do
+      it "should decode JSON to raw data" do
+        string, data = test_cids.first
+
+        cid = Oxygene::CID.new(string, false)
+        cid.raw_data.should == data
+        cid.raw_data.should equal(cid.raw_data)
+        cid.raw_data.should be_frozen
+
+        expect { cid.raw_data.setbyte(0, 1) }.to raise_error(FrozenError)
+      end
+    end
+  end
+
   describe "#data" do
-    it "should return input data for binary CIDs with prefix" do
-      string, data = test_cids.first
+    it "should be an alias for #raw_data" do
+      cid = Oxygene::CID.from_cbor_tag(CBOR::Tagged.new(42, "\x00".b + test_cids.first.last))
 
-      cid = Oxygene::CID.new(data, true, true)
-      cid.data.should equal(data)
-    end
-
-    it "should return input data with prefix added for binary CIDs without prefix" do
-      string, data = test_cids.first
-
-      cid = Oxygene::CID.new(data, true)
-      cid.data.should == "\x00".b + data
-    end
-
-    it "should decode JSON to prefixed binary data for JSON CIDs" do
-      string, data = test_cids.first
-
-      cid = Oxygene::CID.new(string, false)
-      cid.data.should == "\x00".b + data
-    end
-
-    it "should freeze generated binary data" do
-      cid = Oxygene::CID.new(test_cids.first.first, false)
-
-      cid.data.should be_frozen
-      cid.data.should equal(cid.data)
-
-      expect { cid.data.setbyte(0, 1) }.to raise_error(FrozenError)
+      cid.data.should equal(cid.raw_data)
+      cid.data.should == test_cids.first.last
     end
   end
 
@@ -252,7 +326,7 @@ describe Oxygene::CID do
   describe "#==" do
     it "should compare CID data" do
       first = Oxygene::CID.from_json(test_cids[0][0])
-      same = Oxygene::CID.new(first.data.dup, true, true)
+      same = Oxygene::CID.new(first.cbor_form.dup, true, true)
       different = Oxygene::CID.from_json(test_cids[1][0])
 
       (first == same).should == true
@@ -272,6 +346,10 @@ describe Oxygene::CID do
         first.instance_variable_get('@json_form').should be_nil
         first2.instance_variable_get('@json_form').should be_nil
         second.instance_variable_get('@json_form').should be_nil
+
+        first.instance_variable_get('@raw_data').should be_nil
+        first2.instance_variable_get('@raw_data').should be_nil
+        second.instance_variable_get('@raw_data').should be_nil
       end
     end
 
@@ -284,14 +362,18 @@ describe Oxygene::CID do
         (first == first2).should == true
         (first == second).should == false
 
-        first.instance_variable_get('@binary_data').should be_nil
-        first2.instance_variable_get('@binary_data').should be_nil
-        second.instance_variable_get('@binary_data').should be_nil
+        first.instance_variable_get('@raw_data').should be_nil
+        first2.instance_variable_get('@raw_data').should be_nil
+        second.instance_variable_get('@raw_data').should be_nil
+
+        first.instance_variable_get('@cbor_form').should be_nil
+        first2.instance_variable_get('@cbor_form').should be_nil
+        second.instance_variable_get('@cbor_form').should be_nil
       end
     end
 
     context "for one binary and one JSON CID" do
-      it "should compare their binary forms" do
+      it "should compare their CBOR forms" do
         first_j = Oxygene::CID.new(test_cids[0][0], false)
         first2_b = Oxygene::CID.new(test_cids[0][1])
         second_b = Oxygene::CID.new(test_cids[1][1])
@@ -299,8 +381,13 @@ describe Oxygene::CID do
         (first_j == first2_b).should == true
         (first_j == second_b).should == false
 
-        first_j.instance_variable_get('@binary_data').should_not be_nil
+        first_j.instance_variable_get('@cbor_form').should_not be_nil
+        first_j.instance_variable_get('@raw_data').should be_nil
+
+        first2_b.instance_variable_get('@raw_data').should be_nil
         first2_b.instance_variable_get('@json_form').should be_nil
+
+        second_b.instance_variable_get('@raw_data').should be_nil
         second_b.instance_variable_get('@json_form').should be_nil
 
         third_b = Oxygene::CID.new(test_cids[0][1])
@@ -311,19 +398,24 @@ describe Oxygene::CID do
         (third_b == fourth_j).should == false
 
         third_b.instance_variable_get('@json_form').should be_nil
-        third2_j.instance_variable_get('@binary_data').should_not be_nil
-        fourth_j.instance_variable_get('@binary_data').should_not be_nil
+        third_b.instance_variable_get('@raw_data').should be_nil
+
+        third2_j.instance_variable_get('@cbor_form').should_not be_nil
+        third2_j.instance_variable_get('@raw_data').should be_nil
+
+        fourth_j.instance_variable_get('@cbor_form').should_not be_nil
+        fourth_j.instance_variable_get('@raw_data').should be_nil
       end
     end
   end
 
   describe "#hash" do
-    it "should use hash of the binary data" do
+    it "should use hash of the CBOR form" do
       binary_cid = Oxygene::CID.new(test_cids[0][1])
       json_cid = Oxygene::CID.new(test_cids[0][0], false)
 
-      binary_cid.hash.should == binary_cid.data.hash
-      json_cid.hash.should == json_cid.data.hash
+      binary_cid.hash.should == binary_cid.cbor_form.hash
+      json_cid.hash.should == json_cid.cbor_form.hash
     end
   end
 end

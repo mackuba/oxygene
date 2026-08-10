@@ -51,7 +51,7 @@ describe Oxygene::CARRepo do
         records = []
         starting_cid = Oxygene::CID.from_json("bafyreiajotznusc27wzjwm3li6okuvnmdstm6ymy6bk26jqauj4qidjqfe")
 
-        repo.walk_all_nodes(starting_cid.data) do |key, cid|
+        repo.walk_all_nodes(starting_cid.cbor_form) do |key, cid|
           records << key
         end
 
