@@ -10,9 +10,18 @@ describe Oxygene::CARArchive do
   header_size = fixture_data.getbyte(0) + 1
   first_section_cid_offset = fixture_data.index("\x01\x71\x12\x20".b, header_size)
 
+  def build_archive_header(metadata)
+    header = CBOR.encode(metadata)
+    [header.bytesize].pack("C") + header
+  end
+
   let(:archive) { Oxygene::CARArchive.new(fixture_data) }
 
   describe ".new" do
+    it "should reject a zero-length header" do
+      expect { Oxygene::CARArchive.new("\x00".b) }.to raise_error(Oxygene::DecodeError, "Header length cannot be 0")
+    end
+
     it "should reject a truncated header" do
       truncated_data = fixture_data.byteslice(0, 20)
 
@@ -23,6 +32,38 @@ describe Oxygene::CARArchive do
       unsupported_data = fixture_data.sub("gversion\x01".b, "gversion\x02".b)
 
       expect { Oxygene::CARArchive.new(unsupported_data) }.to raise_error(Oxygene::UnsupportedError, "Unexpected CAR version: 2")
+    end
+
+    it "should reject a metadata object that is not a hash" do
+      invalid_data = build_archive_header([])
+
+      expect { Oxygene::CARArchive.new(invalid_data) }.to raise_error(Oxygene::DecodeError, "Metadata object should be a hash")
+    end
+
+    it "should reject a metadata object without a roots array" do
+      invalid_data = build_archive_header({ "version" => 1 })
+
+      expect { Oxygene::CARArchive.new(invalid_data) }.to raise_error(Oxygene::DecodeError, "Missing 'roots' field")
+    end
+
+    it "should reject a roots field that is not an array" do
+      invalid_data = build_archive_header({ "version" => 1, "roots" => "invalid" })
+
+      expect { Oxygene::CARArchive.new(invalid_data) }.to raise_error(Oxygene::DecodeError, /Invalid 'roots' field:/)
+    end
+
+    it "should reject a value in the roots array that is not a CBOR CID tag" do
+      invalid_data = build_archive_header({ "version" => 1, "roots" => ["invalid"] })
+
+      expect { Oxygene::CARArchive.new(invalid_data) }.to raise_error(Oxygene::DecodeError, /Unexpected value in the roots array:/)
+    end
+
+    it "should reject a root with a CBOR tag other than 42" do
+      root_data = Oxygene::CID.from_json(root_cid).cbor_form
+      invalid_root = CBOR::Tagged.new(41, root_data)
+      invalid_data = build_archive_header({ "version" => 1, "roots" => [invalid_root] })
+
+      expect { Oxygene::CARArchive.new(invalid_data) }.to raise_error(Oxygene::DecodeError, /Unexpected value in the roots array/)
     end
   end
 

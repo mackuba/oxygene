@@ -147,13 +147,26 @@ module Oxygene
 
     def read_header(buffer)
       len = buffer.read_varint
+      raise DecodeError.new("Header length cannot be 0") if len == 0
 
       header_data = buffer.read(len)
       raise DecodeError.new("Header too short: #{header_data}") unless header_data.length == len
 
       header = CBOR.decode(header_data)
+      raise DecodeError.new("Metadata object should be a hash") unless header.is_a?(Hash)
       raise UnsupportedError.new("Unexpected CAR version: #{header['version']}") unless header['version'] == 1
-      @roots = header['roots'].map { |x| CID.from_cbor_tag(x) }
+
+      roots = header['roots']
+      raise DecodeError.new("Missing 'roots' field") if roots.nil?
+      raise DecodeError.new("Invalid 'roots' field: #{roots.inspect}") unless roots.is_a?(Array)
+
+      @roots = header['roots'].map { |x|
+        if x.is_a?(CBOR::Tagged) && x.tag == 42
+          CID.from_cbor_tag(x)
+        else
+          raise DecodeError.new("Unexpected value in the roots array: #{x.inspect}")
+        end
+      }
     end
 
     def read_section(buffer)
