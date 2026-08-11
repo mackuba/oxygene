@@ -17,6 +17,10 @@ describe Oxygene::CARArchive do
 
   let(:archive) { Oxygene::CARArchive.new(fixture_data) }
 
+  def parsed_sections
+    archive.parsed_sections
+  end
+
   describe ".new" do
     it "should reject a zero-length header" do
       expect { Oxygene::CARArchive.new("\x00".b) }.to raise_error(Oxygene::DecodeError, "Header length cannot be 0")
@@ -69,46 +73,52 @@ describe Oxygene::CARArchive do
 
   describe "lazy section loading" do
     it "should not load sections until requested" do
-      loaded_sections = archive.instance_variable_get(:@sections)
-      loaded_sections.should be_empty
+      parsed_sections.should be_empty
     end
 
     it "should load only up to a section requested by CID" do
-      loaded_sections = archive.instance_variable_get(:@sections)
-
       archive.section_with_cid(Oxygene::CID.from_json("bafyreihglybf3ix6ctig27d53547wrc4zwcohkah76hq55nohacsdacfm4"))
-      loaded_sections.length.should == 3
+      parsed_sections.length.should == 3
 
       archive.section_with_cid(Oxygene::CID.from_json(record_cid))
-      loaded_sections.length.should == 10
-      loaded_sections.last.cid.to_s.should == record_cid
+      parsed_sections.length.should == 10
+      parsed_sections.last.cid.to_s.should == record_cid
     end
 
     it "should not load more sections if the requested section is already loaded" do
-      loaded_sections = archive.instance_variable_get(:@sections)
-
       archive.section_with_cid(Oxygene::CID.from_json(record_cid))
-      loaded_sections.length.should == 10
+      parsed_sections.length.should == 10
 
       archive.section_with_cid(Oxygene::CID.from_json("bafyreihglybf3ix6ctig27d53547wrc4zwcohkah76hq55nohacsdacfm4"))
-      loaded_sections.length.should == 10
+      parsed_sections.length.should == 10
     end
 
     it "should load every section when a non-existing section is requested" do
-      loaded_sections = archive.instance_variable_get(:@sections)
-
       archive.section_with_cid(Oxygene::CID.from_json("bafyreihqweqweqweqweg27d53547wrc4zwcohkah76hq55nohacsdacfm4"))
 
-      loaded_sections.length.should == 11
+      parsed_sections.length.should == 11
     end
 
     it "should load every section when .sections is called" do
-      loaded_sections = archive.instance_variable_get(:@sections)
-
       archive.sections
 
-      loaded_sections.length.should == 11
-      loaded_sections.last.cid.to_s.should == root_cid
+      parsed_sections.length.should == 11
+      parsed_sections.last.cid.to_s.should == root_cid
+    end
+  end
+
+  describe "#parsed_sections" do
+    it "should return a frozen snapshot without parsing more sections" do
+      snapshot = parsed_sections
+
+      snapshot.should be_empty
+      snapshot.should be_frozen
+      expect { snapshot << Object.new }.to raise_error(FrozenError)
+
+      archive.section_with_cid(Oxygene::CID.from_json(record_cid))
+
+      snapshot.should be_empty
+      parsed_sections.length.should == 10
     end
   end
 
@@ -284,8 +294,6 @@ describe Oxygene::CARArchive do
 
     context "with use_map: true" do
       let(:early_cid) { Oxygene::CID.from_json("bafyreihglybf3ix6ctig27d53547wrc4zwcohkah76hq55nohacsdacfm4") }
-
-      let(:loaded_sections) { archive.instance_variable_get(:@sections) }
       let(:section_map) { archive.instance_variable_get(:@section_map) }
 
       def map_needs_update
@@ -296,8 +304,8 @@ describe Oxygene::CARArchive do
         section = archive.section_with_cid(early_cid, use_map: true, return_body: false)
         section.should_not be_nil
 
-        loaded_sections.length.should == 3
-        section_map.values.should == loaded_sections
+        parsed_sections.length.should == 3
+        section_map.values.should == parsed_sections
         section_map[early_cid.cbor_form].should equal(section)
       end
 
@@ -311,7 +319,7 @@ describe Oxygene::CARArchive do
           record_section = archive.section_with_cid(Oxygene::CID.from_json(record_cid), return_body: false)
           record_section.should_not be_nil
 
-          loaded_sections.length.should == 10
+          parsed_sections.length.should == 10
           section_map.length.should == 3
           map_needs_update.should == true
 
@@ -334,7 +342,7 @@ describe Oxygene::CARArchive do
           # archive.sections loads the rest, without map
           archive.sections
 
-          loaded_sections.length.should == 11
+          parsed_sections.length.should == 11
           section_map.length.should == 3
           map_needs_update.should == true
 
@@ -389,15 +397,13 @@ describe Oxygene::CARArchive do
 
     context "with use_map: false" do
       let(:early_cid) { Oxygene::CID.from_json("bafyreihglybf3ix6ctig27d53547wrc4zwcohkah76hq55nohacsdacfm4") }
-
-      let(:loaded_sections) { archive.instance_variable_get(:@sections) }
       let(:section_map) { archive.instance_variable_get(:@section_map) }
 
       it "should not add parsed sections to the map" do
         section = archive.section_with_cid(early_cid, use_map: false, return_body: false)
         section.should_not be_nil
 
-        loaded_sections.length.should == 3
+        parsed_sections.length.should == 3
         section_map.length.should == 0
       end
 
@@ -411,7 +417,7 @@ describe Oxygene::CARArchive do
         section2 = archive.section_with_cid(early_cid, use_map: false, return_body: false)
         section2.should equal(section)
 
-        loaded_sections.length.should == 10
+        parsed_sections.length.should == 10
         section_map.length.should == 0
       end
     end

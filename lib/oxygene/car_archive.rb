@@ -19,7 +19,7 @@ module Oxygene
     SECTION_PREFIX = "\x01\x71\x12\x20".b.freeze
     private_constant :SECTION_PREFIX
 
-    attr_reader :roots, :sections
+    attr_reader :roots
 
     def initialize(data)
       @sections = []
@@ -40,6 +40,10 @@ module Oxygene
       end
 
       nil
+    end
+
+    def parsed_sections
+      @sections.dup.freeze
     end
 
     def sections
