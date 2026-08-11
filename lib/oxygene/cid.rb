@@ -3,8 +3,6 @@
 require_relative 'base32'
 require_relative 'errors'
 
-require 'base32'
-
 # CIDs in DAG-CBOR: https://ipld.io/specs/codecs/dag-cbor/spec/
 # CIDs in JSON: https://ipld.io/specs/codecs/dag-json/spec/
 # multibase: https://github.com/multiformats/multibase
@@ -50,21 +48,21 @@ module Oxygene
     end
 
     def cbor_form
-      @cbor_form ||= ::Base32.decode(@json_form[1..-1].upcase).prepend(BINARY_PREFIX).freeze
+      @cbor_form ||= Base32.decode(@json_form, 1, BINARY_PREFIX).freeze
     end
 
     def raw_data
       @raw_data ||= if @cbor_form
         @cbor_form.byteslice(1, @cbor_form.bytesize - 1).freeze
       else
-        ::Base32.decode(@json_form[1..-1].upcase).freeze
+        Base32.decode(@json_form, 1).freeze
       end
     end
 
     alias data raw_data
 
     def json_form
-      @json_form ||= Oxygene::Base32.encode(@cbor_form, 1, JSON_PREFIX).freeze
+      @json_form ||= Base32.encode(@cbor_form, 1, JSON_PREFIX).freeze
     end
 
     def to_s

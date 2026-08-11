@@ -10,7 +10,18 @@ module Oxygene
       (BASE32_ALPHABET.getbyte(i >> 5).chr + BASE32_ALPHABET.getbyte(i & 31).chr).freeze
     }.freeze
 
-    private_constant :BASE32_ALPHABET, :BASE32_PAIRS
+    BASE32_DECODE_TABLE = begin
+      table = Array.new(256, 255)
+
+      BASE32_ALPHABET.each_byte.with_index do |byte, value|
+        table[byte] = value
+        table[byte - 32] = value if byte >= 97 && byte <= 122
+      end
+
+      table.freeze
+    end
+
+    private_constant :BASE32_ALPHABET, :BASE32_PAIRS, :BASE32_DECODE_TABLE
 
     def self.encode(data, start_offset = 0, prefix = "")
       total_size = data.bytesize
@@ -76,5 +87,133 @@ module Oxygene
 
       output
     end
+
+    def self.decode(data, start_offset = 0, prefix = "")
+      total_size = data.bytesize
+      raise ArgumentError, "Start offset can't be negative" if start_offset < 0
+      raise ArgumentError, "Start offset is larger than the length of data" if start_offset > total_size
+
+      encoded_end = total_size
+
+      if encoded_end > start_offset && data.getbyte(encoded_end - 1) == 61 # '='
+        encoded_end -= 1 while encoded_end > start_offset && data.getbyte(encoded_end - 1) == 61
+
+        padding_size = total_size - encoded_end
+        unpadded_remainder = (encoded_end - start_offset) & 7
+        expected_padding = (8 - unpadded_remainder) & 7
+
+        if ((total_size - start_offset) & 7) != 0 || padding_size != expected_padding || padding_size > 6
+          raise ArgumentError, "Invalid Base32 padding"
+        end
+      end
+
+      size = encoded_end - start_offset
+      remainder = size & 7
+
+      unless remainder == 0 || remainder == 2 || remainder == 4 || remainder == 5 || remainder == 7
+        raise ArgumentError, "Invalid Base32 length"
+      end
+
+      output = prefix.dup.force_encoding(Encoding::BINARY)
+      offset = start_offset
+      full_block_end = encoded_end - remainder
+      table = BASE32_DECODE_TABLE
+
+      # Eight Base32 characters contain 40 bits, which decode to five bytes. Looking
+      # up and combining a complete block at once avoids the arrays, chunks, temporary
+      # one-character strings and arbitrary-size accumulator used by the base32 gem.
+      while offset < full_block_end
+        v0 = table[data.getbyte(offset)]
+        v1 = table[data.getbyte(offset + 1)]
+        v2 = table[data.getbyte(offset + 2)]
+        v3 = table[data.getbyte(offset + 3)]
+        v4 = table[data.getbyte(offset + 4)]
+        v5 = table[data.getbyte(offset + 5)]
+        v6 = table[data.getbyte(offset + 6)]
+        v7 = table[data.getbyte(offset + 7)]
+
+        invalid_value = v0 | v1 | v2 | v3 | v4 | v5 | v6 | v7
+        invalid_character!(data, offset, offset + 8, table) if invalid_value > 31
+
+        value = (v0 << 35) | (v1 << 30) | (v2 << 25) | (v3 << 20) | (v4 << 15) | (v5 << 10) | (v6 << 5) | v7
+
+        output << ((value >> 32) & 255)
+        output << ((value >> 24) & 255)
+        output << ((value >> 16) & 255)
+        output << ((value >> 8) & 255)
+        output << (value & 255)
+
+        offset += 8
+      end
+
+      case remainder
+      when 2
+        v0 = table[data.getbyte(offset)]
+        v1 = table[data.getbyte(offset + 1)]
+        invalid_character!(data, offset, encoded_end, table) if (v0 | v1) > 31
+
+        value = (v0 << 5) | v1
+        raise ArgumentError, "Invalid Base32 trailing bits" unless (value & 3) == 0
+
+        output << (value >> 2)
+
+      when 4
+        v0 = table[data.getbyte(offset)]
+        v1 = table[data.getbyte(offset + 1)]
+        v2 = table[data.getbyte(offset + 2)]
+        v3 = table[data.getbyte(offset + 3)]
+        invalid_character!(data, offset, encoded_end, table) if (v0 | v1 | v2 | v3) > 31
+
+        value = (v0 << 15) | (v1 << 10) | (v2 << 5) | v3
+        raise ArgumentError, "Invalid Base32 trailing bits" unless (value & 15) == 0
+
+        output << ((value >> 12) & 255)
+        output << ((value >> 4) & 255)
+
+      when 5
+        v0 = table[data.getbyte(offset)]
+        v1 = table[data.getbyte(offset + 1)]
+        v2 = table[data.getbyte(offset + 2)]
+        v3 = table[data.getbyte(offset + 3)]
+        v4 = table[data.getbyte(offset + 4)]
+        invalid_character!(data, offset, encoded_end, table) if (v0 | v1 | v2 | v3 | v4) > 31
+
+        value = (v0 << 20) | (v1 << 15) | (v2 << 10) | (v3 << 5) | v4
+        raise ArgumentError, "Invalid Base32 trailing bits" unless (value & 1) == 0
+
+        output << ((value >> 17) & 255)
+        output << ((value >> 9) & 255)
+        output << ((value >> 1) & 255)
+
+      when 7
+        v0 = table[data.getbyte(offset)]
+        v1 = table[data.getbyte(offset + 1)]
+        v2 = table[data.getbyte(offset + 2)]
+        v3 = table[data.getbyte(offset + 3)]
+        v4 = table[data.getbyte(offset + 4)]
+        v5 = table[data.getbyte(offset + 5)]
+        v6 = table[data.getbyte(offset + 6)]
+        invalid_character!(data, offset, encoded_end, table) if (v0 | v1 | v2 | v3 | v4 | v5 | v6) > 31
+
+        value = (v0 << 30) | (v1 << 25) | (v2 << 20) | (v3 << 15) |
+                (v4 << 10) | (v5 << 5) | v6
+        raise ArgumentError, "Invalid Base32 trailing bits" unless (value & 7) == 0
+
+        output << ((value >> 27) & 255)
+        output << ((value >> 19) & 255)
+        output << ((value >> 11) & 255)
+        output << ((value >> 3) & 255)
+      end
+
+      output
+    end
+
+    def self.invalid_character!(data, offset, end_offset, table)
+      offset += 1 while offset < end_offset && table[data.getbyte(offset)] <= 31
+      character = data.byteslice(offset, 1)
+      raise ArgumentError, "Invalid Base32 character: #{character.inspect}"
+    end
+
+    private_class_method :invalid_character!
   end
 end
