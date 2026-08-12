@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'car_archive'
+require_relative 'errors'
 
 module Oxygene
   class CARRepo < CARArchive

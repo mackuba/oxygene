@@ -2,6 +2,7 @@
 
 require 'cbor'
 require 'stringio'
+require_relative 'errors'
 
 module Oxygene
 
@@ -22,6 +23,8 @@ module Oxygene
         end
 
         value
+      rescue EOFError
+        raise DecodeError, "Unexpected end of data while reading varint"
       end
     end
 

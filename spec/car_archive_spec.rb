@@ -22,6 +22,12 @@ describe Oxygene::CARArchive do
   end
 
   describe ".new" do
+    it "should reject a header with a truncated length varint" do
+      expect { Oxygene::CARArchive.new("\x80".b) }.to raise_error(
+        Oxygene::DecodeError, "Unexpected end of data while reading varint"
+      )
+    end
+
     it "should reject a zero-length header" do
       expect { Oxygene::CARArchive.new("\x00".b) }.to raise_error(Oxygene::DecodeError, "Header length cannot be 0")
     end
@@ -156,6 +162,15 @@ describe Oxygene::CARArchive do
       truncated_archive = Oxygene::CARArchive.new(truncated_data)
 
       expect { truncated_archive.sections }.to raise_error(Oxygene::DecodeError, /Section too short/)
+    end
+
+    it "should reject a section with a truncated length varint" do
+      truncated_data = fixture_data.byteslice(0, header_size) + "\x80".b
+      truncated_archive = Oxygene::CARArchive.new(truncated_data)
+
+      expect { truncated_archive.sections }.to raise_error(
+        Oxygene::DecodeError, "Unexpected end of data while reading varint"
+      )
     end
 
     it "should reject unsupported CID version" do
