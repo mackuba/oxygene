@@ -195,7 +195,7 @@ describe Oxygene::CID do
         cid.cbor_form.should be_frozen
 
         expect { cid.cbor_form.setbyte(0, 1) }.to raise_error(FrozenError)
-      end      
+      end
     end
 
     context "for CIDs created from binary data without prefix" do
@@ -209,7 +209,7 @@ describe Oxygene::CID do
         cid.cbor_form.should equal(cid.cbor_form)
 
         expect { cid.cbor_form.setbyte(0, 1) }.to raise_error(FrozenError)
-      end      
+      end
     end
 
     context "for CIDs created from JSON data" do
@@ -223,7 +223,7 @@ describe Oxygene::CID do
         cid.cbor_form.should equal(cid.cbor_form)
 
         expect { cid.cbor_form.setbyte(0, 1) }.to raise_error(FrozenError)
-      end      
+      end
     end
   end
 

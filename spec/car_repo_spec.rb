@@ -6,6 +6,17 @@ describe Oxygene::CARRepo do
 
   let(:repo) { Oxygene::CARRepo.new(fixture_data) }
 
+  describe ".new" do
+    it "should reject an archive without a root commit" do
+      header = CBOR.encode({ "version" => 1, "roots" => [] })
+      archive_data = [header.bytesize].pack("C") + header
+
+      expect { Oxygene::CARRepo.new(archive_data) }.to raise_error(
+        Oxygene::DecodeError, "CAR repository has no root commit"
+      )
+    end
+  end
+
   describe "#walk_all_nodes" do
     it "should walk all records in the repository" do
       keys = []
@@ -62,6 +73,27 @@ describe Oxygene::CARRepo do
           'app.bsky.feed.like/3jt6wh4b3tv2z',
           'app.bsky.feed.generator/with-friends',
         ]
+      end
+    end
+
+    context "when the root commit is missing from the archive" do
+      it "should raise a decode error" do
+        header_size = fixture_data.getbyte(0) + 1
+        incomplete_repo = Oxygene::CARRepo.new(fixture_data.byteslice(0, header_size))
+
+        expect { incomplete_repo.walk_all_nodes {} }.to raise_error(
+          Oxygene::DecodeError, /Root commit not found in the archive:/
+        )
+      end
+    end
+
+    context "given a starting CID that is missing from the archive" do
+      it "should raise a decode error" do
+        missing_cid = Oxygene::CID.new("\x01\x71\x12\x20".b + ("\x00".b * 32))
+
+        expect { repo.walk_all_nodes(missing_cid) {} }.to raise_error(
+          Oxygene::DecodeError, /MST node not found in the archive:/
+        )
       end
     end
   end
