@@ -9,13 +9,23 @@ module Oxygene
       raise DecodeError, "CAR repository has no root commit" if roots.empty?
     end
 
+    def commit_section
+      return @commit_section if @commit_section
+
+      @commit_section = section_with_cid(roots.first, use_map: true, return_body: false)
+      raise DecodeError, "Root commit not found in the archive: #{roots.first.inspect}" if @commit_section.nil?
+
+      @commit_section
+    end
+
+    def commit
+      commit_section.json_body
+    end
+
     def walk_all_nodes(starting_node_cid = nil, &block)
       if starting_node_cid.nil?
-        root_cid = roots.first
-        root_section = section_with_cid(root_cid, use_map: true, return_body: false)&.decoded_body
-        raise DecodeError, "Root commit not found in the archive: #{root_cid.inspect}" if root_section.nil?
-
-        tree_top_cid = root_section['data'].value
+        commit = commit_section.decoded_body
+        tree_top_cid = commit['data'].value
         return walk_all_nodes(tree_top_cid, &block)
       end
 

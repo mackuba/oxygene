@@ -17,6 +17,32 @@ describe Oxygene::CARRepo do
     end
   end
 
+  describe "#commit_section" do
+    it "should return the section identified by the first root CID" do
+      section = repo.commit_section
+
+      section.should be_a(Oxygene::CARSection)
+      section.cid.should == repo.roots.first
+      section.decoded_body["version"].should == 3
+      section.should equal(repo.commit_section)
+      repo.parsed_sections.should_not be_empty
+    end
+  end
+
+  describe "#commit" do
+    it "should return the root commit in ATProto JSON representation" do
+      commit = repo.commit
+
+      commit.should equal(repo.commit_section.json_body)
+      commit["did"].should == "did:plc:z72i7hdynmk6r22z27h6tvur"
+      commit["version"].should == 3
+      commit["rev"].should == "3msipndrkvm2h"
+      commit["prev"].should be_nil
+      commit["data"]["$link"].should be_a(Oxygene::CID)
+      commit["sig"].keys.should == ["$bytes"]
+    end
+  end
+
   describe "#walk_all_nodes" do
     it "should walk all records in the repository" do
       keys = []
