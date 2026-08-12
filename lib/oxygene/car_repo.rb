@@ -53,11 +53,11 @@ module Oxygene
 
         previous = key
 
+        block.call(key, CID.from_cbor_tag(e['v']))
+
         if e['t']
           walk_all_nodes(e['t'].value, &block)
         end
-
-        block.call(key, CID.from_cbor_tag(e['v']))
       end
     end
   end

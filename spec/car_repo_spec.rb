@@ -84,7 +84,7 @@ describe Oxygene::CARRepo do
   end
 
   describe "#walk_all_nodes" do
-    it "should walk all records in the repository" do
+    it "should walk all records in the repository in path order" do
       keys = []
       cid_map = {}
 
@@ -94,6 +94,7 @@ describe Oxygene::CARRepo do
       end
 
       keys.length.should == 10_640
+      keys.should == keys.sort
 
       cid_map["app.bsky.actor.profile/self"].to_s.should == "bafyreihmkky5jpvhacnmt2vwxzejm4exit677ao2z6mevdib7lqnyvizsq"
       cid_map["app.bsky.feed.like/3jt6wh4b3tv2z"].to_s.should == "bafyreibhlhpbwy5xv7ilkpbmw475nfaxgfidptul62ljl5uu4pnvbnd6oe"
@@ -116,9 +117,9 @@ describe Oxygene::CARRepo do
         records.should == [
           'app.bsky.feed.generator/thevids',
           'app.bsky.feed.generator/whats-hot',
+          'app.bsky.feed.generator/with-friends',
           'app.bsky.feed.like/3jt6wh3ckcc2y',
           'app.bsky.feed.like/3jt6wh4b3tv2z',
-          'app.bsky.feed.generator/with-friends',
         ]
       end
     end
@@ -135,9 +136,9 @@ describe Oxygene::CARRepo do
         records.should == [
           'app.bsky.feed.generator/thevids',
           'app.bsky.feed.generator/whats-hot',
+          'app.bsky.feed.generator/with-friends',
           'app.bsky.feed.like/3jt6wh3ckcc2y',
           'app.bsky.feed.like/3jt6wh4b3tv2z',
-          'app.bsky.feed.generator/with-friends',
         ]
       end
     end
