@@ -185,8 +185,8 @@ module Oxygene
 
         raise DecodeError.new("CID too short: #{cid_data}") unless cid_data.length == 36
 
-        cid_data.prepend(CID::BINARY_PREFIX)
-        cid = CID.new(cid_data, true, true)
+        cid_data.prepend(CID::CBOR_TAG_PREFIX)
+        cid = CID.new(cid_data, binary: true, cbor_prefix: true)
       else
         sbuffer = StringIO.new(section_data)
 

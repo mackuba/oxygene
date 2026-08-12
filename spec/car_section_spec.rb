@@ -12,7 +12,7 @@ describe Oxygene::CARSection do
 
   encoded_data = CBOR.encode(body_object)
 
-  let(:cid) { Oxygene::CID.new(cid_data, true, true) }
+  let(:cid) { Oxygene::CID.new(cid_data, cbor_prefix: true) }
   let(:section) { Oxygene::CARSection.new(cid, encoded_data) }
 
   describe "#data" do
@@ -22,7 +22,7 @@ describe Oxygene::CARSection do
   end
 
   describe "#decoded_body" do
-    it "should return decoded CBOR values without DAG-JSON conversion" do
+    it "should return decoded CBOR values without ATProto JSON conversion" do
       body = section.decoded_body
       body.should be_a(Hash)
 
@@ -34,13 +34,13 @@ describe Oxygene::CARSection do
   end
 
   describe "#json_body" do
-    it "should convert byte strings and CID tags to DAG-JSON values" do
+    it "should convert byte strings and CID tags to ATProto JSON values" do
       body = section.json_body
       body.should be_a(Hash)
 
       body['type'].should == "example"
       body['bytes'].should == { "$bytes" => "AAEC/w" }
-      body['link'].should == { "$link" => Oxygene::CID.new(cid_data, true, true) }
+      body['link'].should == { "$link" => Oxygene::CID.new(cid_data, cbor_prefix: true) }
     end
 
     it "should not modify the value returned from #decoded_body" do

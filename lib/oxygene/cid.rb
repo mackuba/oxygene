@@ -11,7 +11,7 @@ module Oxygene
   class CID
     JSON_PREFIX = 'b'
     JSON_PREFIX_CODE = JSON_PREFIX.ord
-    BINARY_PREFIX = "\x00".b.freeze
+    CBOR_TAG_PREFIX = "\x00".b.freeze
 
     private_constant :JSON_PREFIX_CODE
 
@@ -19,36 +19,34 @@ module Oxygene
       data = tag.value
       raise DecodeError.new("Unexpected first byte of CID: #{data[0]}") unless data.getbyte(0) == 0
 
-      CID.new(data, true, true)
+      CID.new(data, binary: true, cbor_prefix: true)
     end
 
     def self.from_json(string)
       raise DecodeError.new("Unexpected CID length") unless string.length == 59
       raise DecodeError.new("Unexpected CID prefix") unless string.getbyte(0) == JSON_PREFIX_CODE
 
-      CID.new(string, false)
+      CID.new(string, binary: false)
     end
 
-    def initialize(data, binary_form = true, includes_prefix = nil)
+    def initialize(data, binary: true, cbor_prefix: false)
       raise ArgumentError.new("Data cannot be nil") if data.nil?
 
-      if binary_form
-        if includes_prefix == true
+      if binary
+        if cbor_prefix
           @cbor_form = data.freeze
         else
-          @cbor_form = (BINARY_PREFIX + data).freeze
+          @cbor_form = (CBOR_TAG_PREFIX + data).freeze
         end
       else
-        if includes_prefix == nil || includes_prefix == true
-          @json_form = data.freeze
-        else
-          raise ArgumentError.new("CID currently doesn't support binary_form = false with includes_prefix = false")
-        end
+        raise ArgumentError.new("cbor_prefix cannot be used with JSON input") if cbor_prefix
+
+        @json_form = data.freeze
       end
     end
 
     def cbor_form
-      @cbor_form ||= Base32.decode(@json_form, 1, BINARY_PREFIX).freeze
+      @cbor_form ||= Base32.decode(@json_form, 1, CBOR_TAG_PREFIX).freeze
     end
 
     def raw_data
