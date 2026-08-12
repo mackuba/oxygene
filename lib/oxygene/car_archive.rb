@@ -170,7 +170,7 @@ module Oxygene
         else
           raise DecodeError.new("Unexpected value in the roots array: #{x.inspect}")
         end
-      }
+      }.freeze
     end
 
     def read_section(buffer)

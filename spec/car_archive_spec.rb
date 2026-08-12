@@ -126,6 +126,11 @@ describe Oxygene::CARArchive do
     it "should return the CID of the archive roots" do
       archive.roots.map(&:to_s).should == [root_cid]
     end
+
+    it "should return a frozen array" do
+      archive.roots.should be_frozen
+      expect { archive.roots.clear }.to raise_error(FrozenError)
+    end
   end
 
   describe "#sections" do
