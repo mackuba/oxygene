@@ -3,6 +3,13 @@
 describe Oxygene::CARRepo do
   fixture_path = File.expand_path("fixtures/bsky_repo.car", __dir__)
   fixture_data = File.binread(fixture_path)
+  root_cid = Oxygene::CARArchive.new(fixture_data).roots.first
+
+  def build_repo(root_cid, commit_body)
+    header = CBOR.encode({ "version" => 1, "roots" => [CBOR::Tagged.new(42, root_cid.cbor_form)] })
+    section = root_cid.raw_data + CBOR.encode(commit_body)
+    [header.bytesize].pack("C") + header + [section.bytesize].pack("C") + section
+  end
 
   let(:repo) { Oxygene::CARRepo.new(fixture_data) }
 
@@ -13,6 +20,39 @@ describe Oxygene::CARRepo do
 
       expect { Oxygene::CARRepo.new(archive_data) }.to raise_error(
         Oxygene::DecodeError, "CAR repository has no root commit"
+      )
+    end
+
+    it "should reject an archive whose root commit is missing" do
+      header_size = fixture_data.getbyte(0) + 1
+      data = fixture_data.byteslice(0, header_size)
+
+      expect { Oxygene::CARRepo.new(data) }.to raise_error(
+        Oxygene::DecodeError, /Root commit not found in the archive:/
+      )
+    end
+
+    it "should reject a root commit that is not a hash" do
+      invalid_data = build_repo(root_cid, [])
+
+      expect { Oxygene::CARRepo.new(invalid_data) }.to raise_error(
+        Oxygene::DecodeError, "Commit object should be a hash"
+      )
+    end
+
+    it "should reject repos in an older version" do
+      version_2_data = build_repo(root_cid, { "version" => 2 })
+
+      expect { Oxygene::CARRepo.new(version_2_data) }.to raise_error(
+        Oxygene::UnsupportedError, "Unexpected repository version: 2"
+      )
+    end
+
+    it "should reject repos in an unknown newer version" do
+      version_4_data = build_repo(root_cid, { "version" => 4 })
+
+      expect { Oxygene::CARRepo.new(version_4_data) }.to raise_error(
+        Oxygene::UnsupportedError, "Unexpected repository version: 4"
       )
     end
   end
@@ -99,17 +139,6 @@ describe Oxygene::CARRepo do
           'app.bsky.feed.like/3jt6wh4b3tv2z',
           'app.bsky.feed.generator/with-friends',
         ]
-      end
-    end
-
-    context "when the root commit is missing from the archive" do
-      it "should raise a decode error" do
-        header_size = fixture_data.getbyte(0) + 1
-        incomplete_repo = Oxygene::CARRepo.new(fixture_data.byteslice(0, header_size))
-
-        expect { incomplete_repo.walk_all_nodes {} }.to raise_error(
-          Oxygene::DecodeError, /Root commit not found in the archive:/
-        )
       end
     end
 
