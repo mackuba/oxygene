@@ -82,6 +82,32 @@ describe Oxygene::CID do
       expect { Oxygene::CID.from_json(string) }.to raise_error(Oxygene::DecodeError)
     end
 
+    it "should reject CIDs with uppercase Base32 characters" do
+      string = test_cids.first.first.upcase
+      string = "b" + string[1..-1]
+
+      expect { Oxygene::CID.from_json(string) }.to raise_error(
+        Oxygene::DecodeError, "Unexpected characters in CID"
+      )
+    end
+
+    it "should reject CIDs with Base32 padding" do
+      string = test_cids.first.first.sub(/.$/, "=")
+
+      expect { Oxygene::CID.from_json(string) }.to raise_error(
+        Oxygene::DecodeError, "Unexpected characters in CID"
+      )
+    end
+
+    it "should reject non-zero trailing bits" do
+      string = test_cids.first.first.dup
+      string.setbyte(58, "b".ord)
+
+      expect { Oxygene::CID.from_json(string) }.to raise_error(
+        Oxygene::DecodeError, "Unexpected CID trailing bits"
+      )
+    end
+
     it "should not generate raw or CBOR form until needed" do
       string = test_cids.first.first
 
@@ -121,6 +147,92 @@ describe Oxygene::CID do
       expect { data.setbyte(0, 1) }.to raise_error(FrozenError)
     end
 
+    it "should reject a binary CID with an unsupported version" do
+      data = test_cids.first.last.dup
+      data.setbyte(0, 2)
+
+      expect { Oxygene::CID.new(data) }.to raise_error(
+        Oxygene::UnsupportedError, "Unexpected CID version: 2"
+      )
+    end
+
+    it "should accept the raw codec used by blob CIDs" do
+      data = test_cids.first.last.dup
+      data.setbyte(1, 0x55)
+
+      Oxygene::CID.new(data, codec: :raw).raw_data.should == data
+    end
+
+    it "should require the requested codec" do
+      data = test_cids.first.last
+
+      expect { Oxygene::CID.new(data, codec: :raw) }.to raise_error(
+        Oxygene::UnsupportedError, "Unexpected CID codec: 113"
+      )
+    end
+
+    it "should require the requested codec for JSON input" do
+      string = test_cids.first.first
+
+      expect { Oxygene::CID.new(string, binary: false, codec: :raw) }.to raise_error(
+        Oxygene::UnsupportedError, "Unexpected CID codec: 113"
+      )
+    end
+
+    it "should validate a JSON codec without generating binary forms" do
+      cid = Oxygene::CID.new(test_cids.first.first, binary: false, codec: :drisl)
+
+      cid.instance_variable_get('@cbor_form').should be_nil
+      cid.instance_variable_get('@raw_data').should be_nil
+    end
+
+    it "should reject an unknown codec name" do
+      expect { Oxygene::CID.new(test_cids.first.last, codec: :unknown) }.to raise_error(
+        ArgumentError, "Unexpected CID codec: :unknown"
+      )
+    end
+
+    it "should reject a binary CID with an unsupported codec" do
+      data = test_cids.first.last.dup
+      data.setbyte(1, 0x70)
+
+      expect { Oxygene::CID.new(data) }.to raise_error(
+        Oxygene::UnsupportedError, "Unexpected CID codec: 112"
+      )
+    end
+
+    it "should reject a binary CID with an unsupported hash" do
+      data = test_cids.first.last.dup
+      data.setbyte(2, 0x13)
+
+      expect { Oxygene::CID.new(data) }.to raise_error(
+        Oxygene::UnsupportedError, "Unexpected CID hash: 19"
+      )
+    end
+
+    it "should reject a binary CID with an unsupported hash length" do
+      data = test_cids.first.last.dup
+      data.setbyte(3, 31)
+
+      expect { Oxygene::CID.new(data) }.to raise_error(
+        Oxygene::UnsupportedError, "Unexpected CID length: 31"
+      )
+    end
+
+    it "should reject a binary CID with a non-canonical prefix" do
+      data = "\x81\x00".b + test_cids.first.last.byteslice(1, 34)
+
+      expect { Oxygene::CID.new(data) }.to raise_error(
+        Oxygene::UnsupportedError, "Non-canonical CID prefix"
+      )
+    end
+
+    it "should reject a truncated binary CID" do
+      data = test_cids.first.last.byteslice(0, 20)
+
+      expect { Oxygene::CID.new(data) }.to raise_error(Oxygene::DecodeError, /CID too short:/)
+    end
+
     it "should accept binary data explicitly marked as not including the prefix" do
       string, data = test_cids.first
       cid = Oxygene::CID.new(data, cbor_prefix: false)
@@ -156,6 +268,23 @@ describe Oxygene::CID do
       cid.json_form.should == string
       cid.raw_data.should == data
       cid.cbor_form.should == "\x00".b + data
+    end
+
+    it "should reject uppercase JSON form input" do
+      string = test_cids.first.first.upcase
+      string = "b" + string[1..-1]
+
+      expect { Oxygene::CID.new(string, binary: false) }.to raise_error(
+        Oxygene::DecodeError, "Unexpected characters in CID"
+      )
+    end
+
+    it "should reject padded JSON form input" do
+      string = test_cids.first.first + "="
+
+      expect { Oxygene::CID.new(string, binary: false) }.to raise_error(
+        Oxygene::DecodeError, "Unexpected CID length"
+      )
     end
 
     it "should freeze the JSON data it stores without copying it" do

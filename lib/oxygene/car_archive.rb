@@ -16,9 +16,6 @@ module Oxygene
   class CARArchive
     using Oxygene::Extensions
 
-    SECTION_PREFIX = "\x01\x71\x12\x20".b.freeze
-    private_constant :SECTION_PREFIX
-
     attr_reader :roots
 
     def initialize(data)
@@ -179,31 +176,10 @@ module Oxygene
       section_data = buffer.read(len)
       raise DecodeError.new("Section too short: #{section_data}") unless section_data.length == len
 
-      if section_data.start_with?(SECTION_PREFIX)
-        cid_data = section_data.byteslice(0, 36)
-        body_data = section_data.byteslice(36..)
-
-        raise DecodeError.new("CID too short: #{cid_data}") unless cid_data.length == 36
-
-        cid_data.prepend(CID::CBOR_TAG_PREFIX)
-        cid = CID.new(cid_data, binary: true, cbor_prefix: true)
-      else
-        sbuffer = StringIO.new(section_data)
-
-        version = sbuffer.read_varint
-        raise UnsupportedError.new("Unexpected CID version: #{version}") unless version == 1
-
-        codec = sbuffer.read_varint
-        raise UnsupportedError.new("Unexpected CID codec: #{codec}") unless codec == 0x71  # dag-cbor
-
-        hash = sbuffer.read_varint
-        raise UnsupportedError.new("Unexpected CID hash: #{hash}") unless hash == 0x12  # sha2-256
-
-        clen = sbuffer.read_varint
-        raise UnsupportedError.new("Unexpected CID length: #{clen}") unless clen == 32
-
-        raise UnsupportedError.new("Non-canonical CID prefix")
-      end
+      cid_data = section_data.byteslice(0, 36)
+      body_data = section_data.byteslice(36..)
+      cid_data.prepend(CID::CBOR_TAG_PREFIX)
+      cid = CID.new(cid_data, binary: true, cbor_prefix: true, codec: :drisl)
 
       new_section = CARSection.new(cid, body_data)
 
