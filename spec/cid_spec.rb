@@ -13,208 +13,137 @@ describe Oxygene::CID do
     [
       "bafyreia2rdzvv7fjlpilxfzwvx7pp4afj3h3aphdmk4ankikmnxqt2vtjy",
       "\x01q\x12 \x1A\x88\xF3Z\xFC\xA9[\xD0\xBB\x976\xAD\xFE\xF7\xF0\x05N\xCF\xB0<\xE3b\xB8\x06\xA9\nco\t\xEA\xB3N".b.freeze
+    ],
+    [
+      "bafkreiegubtpnqvpcbaj6h3yg4aj3vgu6jscqnxsi35nahotykczoo6kqa",
+      "\x01U\x12 \x86\xA0f\xF6\xC2\xAF\x10@\x9F\x1Fx7\x00\x9D\xD4\xD4\xF2d(6\xF2F\xFA\xD0\x1D\xD3\xC2\x85\x97;\xCA\x80".b.freeze
     ]
   ]
 
-  describe ".from_cbor_tag" do
-    it "should decode real CID data" do
-      test_cids.each do |string, data|
-        tag = CBOR::Tagged.new(42, ("\x00".b + data).freeze)
+  drisl_cid = test_cids[0]
+  raw_cid = test_cids[-1]
 
-        cid = Oxygene::CID.from_cbor_tag(tag)
-        cid.cbor_form.should == tag.value
-        cid.raw_data.should == data
-        cid.should == Oxygene::CID.from_json(string)
-      end
-    end
-
-    it "should reject CID data without the identity prefix" do
-      data = test_cids.first.last
-      tag = CBOR::Tagged.new(42, ("\x01".b + data).freeze)
-
-      expect { Oxygene::CID.from_cbor_tag(tag) }.to raise_error(Oxygene::DecodeError)
-    end
-
-    it "should store the CID data with the 0 prefix" do
-      data = test_cids.first.last
-      tag = CBOR::Tagged.new(42, ("\x00".b + data).freeze)
-
-      cid = Oxygene::CID.from_cbor_tag(tag)
-      cid.instance_variable_get('@cbor_form').should == tag.value
-    end
-
-    it "should not generate JSON form until needed" do
-      data = test_cids.first.last
-      tag = CBOR::Tagged.new(42, ("\x00".b + data).freeze)
-
-      cid = Oxygene::CID.from_cbor_tag(tag)
-      cid.instance_variable_get('@json_form').should be_nil
-
-      cid.to_s
-      cid.instance_variable_get('@json_form').should_not be_nil
-    end
-  end
-
-  describe ".from_json" do
+  shared_examples "a JSON CID constructor" do |build_cid:|
     it "should decode real CID strings" do
       test_cids.each do |string, data|
-        cid = Oxygene::CID.from_json(string)
+        cid = build_cid.call(string)
 
-        cid.cbor_form.should == "\x00".b + data
-        cid.to_s.should == string
-
-        cid = Oxygene::CID.from_json(string)
-
-        cid.to_s.should == string
+        cid.json_form.should == string
+        cid.raw_data.should == data
         cid.cbor_form.should == "\x00".b + data
       end
     end
 
     it "should reject CIDs with a wrong length" do
-      string = (test_cids.first.first + "a").freeze
-
-      expect { Oxygene::CID.from_json(string) }.to raise_error(Oxygene::DecodeError)
+      expect { build_cid.call(test_cids.first.first + "a") }.to raise_error(Oxygene::DecodeError)
     end
 
     it "should reject CIDs with a wrong multibase prefix" do
-      string = ("z" + test_cids.first.first[1..-1]).freeze
+      string = "z" + test_cids.first.first[1..-1]
 
-      expect { Oxygene::CID.from_json(string) }.to raise_error(Oxygene::DecodeError)
+      expect { build_cid.call(string) }.to raise_error(Oxygene::DecodeError)
     end
 
-    it "should reject CIDs with uppercase Base32 characters" do
-      string = test_cids.first.first.upcase
-      string = "b" + string[1..-1]
+    it "should reject CIDs with a wrong header" do
+      string = test_cids.first.first.dup
+      string[2] = 't'
 
-      expect { Oxygene::CID.from_json(string) }.to raise_error(
-        Oxygene::DecodeError, "Unexpected characters in CID"
-      )
+      expect { build_cid.call(string) }.to raise_error(Oxygene::UnsupportedError)
+
+      string = test_cids.first.first.dup
+      string[7] = 's'
+
+      expect { build_cid.call(string) }.to raise_error(Oxygene::UnsupportedError)
     end
 
-    it "should reject CIDs with Base32 padding" do
+    it "should reject uppercase Base32 characters" do
+      string = "b" + test_cids.first.first[1..-1].upcase
+
+      expect { build_cid.call(string) }.to raise_error(Oxygene::DecodeError, "Unexpected characters in CID")
+    end
+
+    it "should reject Base32 padding" do
       string = test_cids.first.first.sub(/.$/, "=")
 
-      expect { Oxygene::CID.from_json(string) }.to raise_error(
-        Oxygene::DecodeError, "Unexpected characters in CID"
-      )
+      expect { build_cid.call(string) }.to raise_error(Oxygene::DecodeError, "Unexpected characters in CID")
+    end
+
+    it "should reject invalid characters" do
+      string = test_cids.first.first.sub(/4/, "9")
+
+      expect { build_cid.call(string) }.to raise_error(Oxygene::DecodeError, "Unexpected characters in CID")
     end
 
     it "should reject non-zero trailing bits" do
       string = test_cids.first.first.dup
       string.setbyte(58, "b".ord)
 
-      expect { Oxygene::CID.from_json(string) }.to raise_error(
-        Oxygene::DecodeError, "Unexpected CID trailing bits"
-      )
+      expect { build_cid.call(string) }.to raise_error(Oxygene::DecodeError, "Unexpected CID trailing bits")
     end
 
-    it "should not generate raw or CBOR form until needed" do
-      string = test_cids.first.first
+    it "should store and freeze the JSON form without generating binary forms" do
+      string = test_cids.first.first.dup
+      cid = build_cid.call(string)
 
-      cid = Oxygene::CID.from_json(string)
-      cid.instance_variable_get('@raw_data').should be_nil
+      cid.json_form.should equal(string)
+      cid.json_form.should be_frozen
       cid.instance_variable_get('@cbor_form').should be_nil
-
-      cid.cbor_form
-
       cid.instance_variable_get('@raw_data').should be_nil
-      cid.instance_variable_get('@cbor_form').should_not be_nil
 
-      cid.raw_data
+      expect { string.setbyte(0, "z".ord) }.to raise_error(FrozenError)
+    end
 
-      cid.instance_variable_get('@raw_data').should_not be_nil
+    it "should accept CIDs with either codec" do
+      expect { build_cid.call(drisl_cid.first) }.not_to raise_error
+      expect { build_cid.call(raw_cid.first) }.not_to raise_error
+    end
+
+    it "should reject CIDs with a different than allowed codec" do
+      bad_json = test_cids.first.first.dup
+      bad_json[3] = 'q'
+
+      expect { build_cid.call(bad_json) }.to raise_error(Oxygene::UnsupportedError)
     end
   end
 
-  describe "CID.new" do
-    it "should accept binary data with a CBOR tag prefix" do
-      string, data = test_cids.first
-      prefixed_data = "\x00".b + data
-      cid = Oxygene::CID.new(prefixed_data, cbor_prefix: true)
-
-      cid.cbor_form.should == prefixed_data
-      cid.raw_data.should == data
-      cid.json_form.should == string
-    end
-
-    it "should freeze the CBOR data it stores without copying it" do
-      data = ("\x00".b + test_cids.first.last).dup
-      cid = Oxygene::CID.new(data, cbor_prefix: true)
-
-      cid.cbor_form.should equal(data)
-      cid.cbor_form.should be_frozen
-
-      expect { data.setbyte(0, 1) }.to raise_error(FrozenError)
-    end
-
+  shared_examples "a binary CID constructor" do |build_cid:, wrap_binary_data:|
     it "should reject a binary CID with an unsupported version" do
       data = test_cids.first.last.dup
       data.setbyte(0, 2)
 
-      expect { Oxygene::CID.new(data) }.to raise_error(
+      expect { build_cid.call(wrap_binary_data.call(data)) }.to raise_error(
         Oxygene::UnsupportedError, "Unexpected CID version: 2"
       )
     end
 
-    it "should accept the raw codec used by blob CIDs" do
-      data = test_cids.first.last.dup
-      data.setbyte(1, 0x55)
-
-      Oxygene::CID.new(data, codec: :raw).raw_data.should == data
+    it "should accept CIDs with either supported codec" do
+      expect { build_cid.call(wrap_binary_data.call(drisl_cid.last)) }.not_to raise_error
+      expect { build_cid.call(wrap_binary_data.call(raw_cid.last)) }.not_to raise_error
     end
 
-    it "should require the requested codec" do
-      data = test_cids.first.last
-
-      expect { Oxygene::CID.new(data, codec: :raw) }.to raise_error(
-        Oxygene::UnsupportedError, "Unexpected CID codec: 113"
-      )
-    end
-
-    it "should require the requested codec for JSON input" do
-      string = test_cids.first.first
-
-      expect { Oxygene::CID.new(string, binary: false, codec: :raw) }.to raise_error(
-        Oxygene::UnsupportedError, "Unexpected CID codec: 113"
-      )
-    end
-
-    it "should validate a JSON codec without generating binary forms" do
-      cid = Oxygene::CID.new(test_cids.first.first, binary: false, codec: :drisl)
-
-      cid.instance_variable_get('@cbor_form').should be_nil
-      cid.instance_variable_get('@raw_data').should be_nil
-    end
-
-    it "should reject an unknown codec name" do
-      expect { Oxygene::CID.new(test_cids.first.last, codec: :unknown) }.to raise_error(
-        ArgumentError, "Unexpected CID codec: :unknown"
-      )
-    end
-
-    it "should reject a binary CID with an unsupported codec" do
+    it "should reject CIDs using an unsupported codec" do
       data = test_cids.first.last.dup
       data.setbyte(1, 0x70)
 
-      expect { Oxygene::CID.new(data) }.to raise_error(
+      expect { build_cid.call(wrap_binary_data.call(data)) }.to raise_error(
         Oxygene::UnsupportedError, "Unexpected CID codec: 112"
       )
     end
 
-    it "should reject a binary CID with an unsupported hash" do
+    it "should reject CIDs with an unsupported hash id" do
       data = test_cids.first.last.dup
       data.setbyte(2, 0x13)
 
-      expect { Oxygene::CID.new(data) }.to raise_error(
+      expect { build_cid.call(wrap_binary_data.call(data)) }.to raise_error(
         Oxygene::UnsupportedError, "Unexpected CID hash: 19"
       )
     end
 
-    it "should reject a binary CID with an unsupported hash length" do
+    it "should reject CIDs with an unsupported hash length" do
       data = test_cids.first.last.dup
       data.setbyte(3, 31)
 
-      expect { Oxygene::CID.new(data) }.to raise_error(
+      expect { build_cid.call(wrap_binary_data.call(data)) }.to raise_error(
         Oxygene::UnsupportedError, "Unexpected CID length: 31"
       )
     end
@@ -222,15 +151,201 @@ describe Oxygene::CID do
     it "should reject a binary CID with a non-canonical prefix" do
       data = "\x81\x00".b + test_cids.first.last.byteslice(1, 34)
 
-      expect { Oxygene::CID.new(data) }.to raise_error(
+      expect { build_cid.call(wrap_binary_data.call(data)) }.to raise_error(
         Oxygene::UnsupportedError, "Non-canonical CID prefix"
       )
     end
 
-    it "should reject a truncated binary CID" do
-      data = test_cids.first.last.byteslice(0, 20)
+    it "should reject a too short binary CID" do
+      data = test_cids.first.last.byteslice(0, 35)
 
-      expect { Oxygene::CID.new(data) }.to raise_error(Oxygene::DecodeError, /CID too short:/)
+      expect { build_cid.call(wrap_binary_data.call(data)) }.to raise_error(Oxygene::DecodeError, /CID too short:/)
+    end
+
+    it "should reject a too long binary CID" do
+      data = test_cids.first.last + "\x00"
+
+      expect { build_cid.call(wrap_binary_data.call(data)) }.to raise_error(Oxygene::DecodeError, /CID too long:/)
+    end
+
+    it "should not generate JSON form until needed" do
+      data = test_cids.first.last
+      cid = build_cid.call(wrap_binary_data.call(data))
+      
+      cid.instance_variable_get('@json_form').should be_nil
+
+      cid.to_s
+      cid.instance_variable_get('@json_form').should_not be_nil
+    end
+  end
+
+  shared_examples "a prefixed binary CID constructor" do |build_cid:|
+    it "should decode real CID data" do
+      test_cids.each do |string, data|
+        prefixed_data = "\x00".b + data
+        cid = build_cid.call(prefixed_data)
+
+        cid.cbor_form.should == prefixed_data
+        cid.raw_data.should == data
+        cid.json_form.should == string
+      end
+    end
+
+    it "should reject CID data without the \\x00 prefix" do
+      data = "\x01".b + test_cids.first.last
+      expect { build_cid.call(data) }.to raise_error(Oxygene::DecodeError)
+
+      data = test_cids.first.last
+      expect { build_cid.call(data) }.to raise_error(Oxygene::DecodeError)
+    end
+
+    it "should store and freeze the prefixed data without copying it" do
+      data = "\x00".b + test_cids.first.last
+      cid = build_cid.call(data)
+
+      cid.cbor_form.should equal(data)
+      cid.cbor_form.should be_frozen
+
+      expect { data.setbyte(0, 1) }.to raise_error(FrozenError)
+    end
+  end
+
+  describe ".from_json" do
+    include_examples "a JSON CID constructor", build_cid: ->(data) { Oxygene::CID.from_json(data) }
+  end
+
+  describe ".from_cbor_tag" do
+    include_examples "a binary CID constructor",
+      build_cid: ->(data) { Oxygene::CID.from_cbor_tag(CBOR::Tagged.new(42, data)) },
+      wrap_binary_data: ->(data) { "\x00".b + data }
+
+    include_examples "a prefixed binary CID constructor",
+      build_cid: ->(data) { Oxygene::CID.from_cbor_tag(CBOR::Tagged.new(42, data)) }
+  end
+
+  describe "CID.new" do
+    context "with JSON data" do
+      include_examples "a JSON CID constructor", build_cid: ->(data) { Oxygene::CID.new(data, binary: false) }
+
+      it "should reject nil data" do
+        expect { Oxygene::CID.new(nil, binary: false) }.to raise_error(ArgumentError, "Data cannot be nil")
+      end
+
+      it "should reject cbor_prefix: true" do
+        string = test_cids.first.first
+
+        expect { Oxygene::CID.new(string, binary: false, cbor_prefix: true) }.to raise_error(
+          ArgumentError, "cbor_prefix cannot be used with JSON input"
+        )
+      end
+
+      it "should reject an unknown codec name" do
+        expect { Oxygene::CID.new(test_cids.first.first, binary: false, codec: :unknown) }.to raise_error(
+          ArgumentError, "Unexpected CID codec: :unknown"
+        )
+      end
+
+      it "should validate that the CID uses a requested codec, without generating binary forms" do
+        cid = Oxygene::CID.new(drisl_cid.first, binary: false, codec: :drisl)
+
+        cid.instance_variable_get('@cbor_form').should be_nil
+        cid.instance_variable_get('@raw_data').should be_nil
+
+        cid2 = Oxygene::CID.new(raw_cid.first, binary: false, codec: :raw)
+
+        cid2.instance_variable_get('@cbor_form').should be_nil
+        cid2.instance_variable_get('@raw_data').should be_nil
+
+        expect { Oxygene::CID.new(drisl_cid.first, binary: false, codec: :raw) }.to raise_error(Oxygene::UnsupportedError)
+        expect { Oxygene::CID.new(raw_cid.first, binary: false, codec: :drisl) }.to raise_error(Oxygene::UnsupportedError)
+
+        bad_json = test_cids.first.first.dup
+        bad_json[3] = 'q'
+
+        expect { Oxygene::CID.new(bad_json, binary: false, codec: :drisl) }.to raise_error(Oxygene::UnsupportedError)
+        expect { Oxygene::CID.new(bad_json, binary: false, codec: :raw) }.to raise_error(Oxygene::UnsupportedError)
+      end
+    end
+
+    context "with prefixed binary data" do
+      include_examples "a prefixed binary CID constructor",
+        build_cid: ->(data) { Oxygene::CID.new(data, cbor_prefix: true) }
+
+      include_examples "a binary CID constructor",
+        build_cid: ->(data) { Oxygene::CID.new(data, cbor_prefix: true) },
+        wrap_binary_data: ->(data) { "\x00".b + data }
+
+      it "should reject nil data" do
+        expect { Oxygene::CID.new(nil, binary: true, cbor_prefix: true) }.to raise_error(ArgumentError, "Data cannot be nil")
+      end
+
+      it "should reject an unknown codec name" do
+        expect { Oxygene::CID.new("\x00".b + test_cids.first.last, cbor_prefix: true, codec: :unknown) }.to raise_error(
+          ArgumentError, "Unexpected CID codec: :unknown"
+        )
+      end
+
+      it "should validate that the CID uses a requested codec" do
+        expect { Oxygene::CID.new("\x00".b + drisl_cid[1], cbor_prefix: true, codec: :drisl) }.to_not raise_error
+        expect { Oxygene::CID.new("\x00".b + raw_cid[1], cbor_prefix: true, codec: :raw) }.to_not raise_error
+
+        expect { Oxygene::CID.new("\x00".b + drisl_cid[1], cbor_prefix: true, codec: :raw) }.to raise_error(
+          Oxygene::UnsupportedError, /Unexpected CID codec/
+        )
+        expect { Oxygene::CID.new("\x00".b + raw_cid[1], cbor_prefix: true, codec: :drisl) }.to raise_error(
+          Oxygene::UnsupportedError, /Unexpected CID codec/
+        )
+
+        bad_data = test_cids.first.last.dup
+        bad_data[1] = "\x44"
+
+        expect { Oxygene::CID.new("\x00".b + bad_data, cbor_prefix: true, codec: :drisl) }.to raise_error(
+          Oxygene::UnsupportedError, /Unexpected CID codec/
+        )
+        expect { Oxygene::CID.new("\x00".b + bad_data, cbor_prefix: true, codec: :raw) }.to raise_error(
+          Oxygene::UnsupportedError, /Unexpected CID codec/
+        )
+      end
+    end
+
+    context "with unprefixed binary data" do
+      include_examples "a binary CID constructor",
+        build_cid: ->(data) { Oxygene::CID.new(data) },
+        wrap_binary_data: ->(data) { data }
+
+      it "should reject nil data" do
+        expect { Oxygene::CID.new(nil, binary: true) }.to raise_error(ArgumentError, "Data cannot be nil")
+      end
+
+      it "should decode real CID data" do
+        test_cids.each do |string, data|
+          cid = Oxygene::CID.new(data)
+
+          cid.raw_data.should == data
+          cid.cbor_form.should == "\x00".b + data
+          cid.json_form.should == string
+        end
+      end
+
+      it "should reject an unknown codec name" do
+        expect { Oxygene::CID.new(test_cids.first.last, codec: :unknown) }.to raise_error(
+          ArgumentError, "Unexpected CID codec: :unknown"
+        )
+      end
+
+      it "should validate that the CID uses a requested codec" do
+        expect { Oxygene::CID.new(drisl_cid[1], codec: :drisl) }.to_not raise_error
+        expect { Oxygene::CID.new(raw_cid[1], codec: :raw) }.to_not raise_error
+
+        expect { Oxygene::CID.new(drisl_cid[1], codec: :raw) }.to raise_error(Oxygene::UnsupportedError, /Unexpected CID codec/)
+        expect { Oxygene::CID.new(raw_cid[1], codec: :drisl) }.to raise_error(Oxygene::UnsupportedError, /Unexpected CID codec/)
+
+        bad_data = test_cids.first.last.dup
+        bad_data[1] = "\x44"
+
+        expect { Oxygene::CID.new(bad_data, codec: :drisl) }.to raise_error(Oxygene::UnsupportedError, /Unexpected CID codec/)
+        expect { Oxygene::CID.new(bad_data, codec: :raw) }.to raise_error(Oxygene::UnsupportedError, /Unexpected CID codec/)
+      end
     end
 
     it "should accept binary data explicitly marked as not including the prefix" do
@@ -259,56 +374,6 @@ describe Oxygene::CID do
         cid.cbor_form.should == "\x00".b + data
         cid.json_form.should == string
       end
-    end
-
-    it "should accept JSON form input when binary is false" do
-      string, data = test_cids.first
-      cid = Oxygene::CID.new(string, binary: false)
-
-      cid.json_form.should == string
-      cid.raw_data.should == data
-      cid.cbor_form.should == "\x00".b + data
-    end
-
-    it "should reject uppercase JSON form input" do
-      string = test_cids.first.first.upcase
-      string = "b" + string[1..-1]
-
-      expect { Oxygene::CID.new(string, binary: false) }.to raise_error(
-        Oxygene::DecodeError, "Unexpected characters in CID"
-      )
-    end
-
-    it "should reject padded JSON form input" do
-      string = test_cids.first.first + "="
-
-      expect { Oxygene::CID.new(string, binary: false) }.to raise_error(
-        Oxygene::DecodeError, "Unexpected CID length"
-      )
-    end
-
-    it "should freeze the JSON data it stores without copying it" do
-      string = test_cids.first.first.dup
-      cid = Oxygene::CID.new(string, binary: false)
-
-      cid.json_form.should equal(string)
-      cid.json_form.should be_frozen
-
-      expect { string.setbyte(0, "z".ord) }.to raise_error(FrozenError)
-    end
-
-    it "should reject cbor_prefix with JSON data" do
-      string = test_cids.first.first
-
-      expect { Oxygene::CID.new(string, binary: false, cbor_prefix: true) }.to raise_error(
-        ArgumentError, "cbor_prefix cannot be used with JSON input"
-      )
-    end
-
-    it "should reject nil data" do
-      expect { Oxygene::CID.new(nil) }.to raise_error(ArgumentError, "Data cannot be nil")
-      expect { Oxygene::CID.new(nil, binary: true) }.to raise_error(ArgumentError, "Data cannot be nil")
-      expect { Oxygene::CID.new(nil, binary: false) }.to raise_error(ArgumentError, "Data cannot be nil")
     end
   end
 
