@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative 'oxygene/base32'
 require_relative 'oxygene/car_archive'
 require_relative 'oxygene/car_repo'
 require_relative 'oxygene/cid'
