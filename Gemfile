@@ -15,3 +15,7 @@ gem 'benchmark', '~> 0.3.0'
 gem 'ruby-prof'
 
 gem 'skyfall'
+
+gem 'rdoc'
+gem 'yard'
+gem 'webrick'

@@ -1,4 +1,6 @@
 .bundle
 coverage
+doc
 Gemfile.lock
 .rspec_status
+.yardoc

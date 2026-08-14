@@ -1,8 +1,18 @@
 # frozen_string_literal: true
 
-# Based on the code of the base32 gem by Samantha Tesla (https://github.com/stesla/base32, MIT).
-
 module Oxygene
+
+  #
+  # Fast, optimized implementation of [RFC 4648 Base32](https://datatracker.ietf.org/doc/html/rfc4648#section-6)
+  # for encoding and decoding binary data.
+  #
+  # Decoding accepts either lowercase or uppercase input and accepts `=` padding if present. Encoder only
+  # creates Base32 output using lowercase alphabet and without padding, since that's what it used in
+  # DASL/ATProto CIDs.
+  #
+  # Based on the code of the [base32 gem](https://github.com/stesla/base32) by Samantha Tesla (MIT).
+  #
+
   module Base32
     BASE32_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567".freeze
 
@@ -23,15 +33,25 @@ module Oxygene
 
     private_constant :BASE32_ALPHABET, :BASE32_ENCODE_TABLE, :BASE32_DECODE_TABLE
 
+
+    # Encodes a binary string into Base32 (lowercase and without padding).
+    #
+    # @param data [String] the input string to encode
+    # @param start_offset [Integer] byte offset in `data` from which bytes should be read
+    # @param prefix [String] string to add at the beginning of the encoded result
+    #
+    # @return [String] a new string containing the prefix and the input encoded into Base32
+    # @raise [ArgumentError] if `start_offset` is negative or beyond the end of `data`
+
     def self.encode(data, start_offset = 0, prefix = "")
       total_size = data.bytesize
       raise ArgumentError, "Start offset can't be negative" if start_offset < 0
       raise ArgumentError, "Start offset is larger than the length of data" if start_offset > total_size
 
-      size = total_size - start_offset
+      encoded_size = total_size - start_offset
       output = prefix.dup
       offset = start_offset
-      full_block_end = total_size - (size % 5)
+      full_block_end = total_size - (encoded_size % 5)
 
       # A single base32 character is one of the 32 values in the BASE32_ALPHABET string
       # above, i.e. 5 bits. The BASE32_ENCODE_TABLE array stores a (flattened) 32x32 table
@@ -56,6 +76,8 @@ module Oxygene
 
         offset += 5
       end
+
+      # Finish the output for the final incomplete block of less than 40 bits:
 
       case total_size - offset
       when 1
@@ -88,6 +110,19 @@ module Oxygene
       output
     end
 
+    # Decodes Base32-encoded data into the original byte string.
+    #
+    # For compatibility, the decoder accepts both lowercase or uppercase inputs and trailing
+    # `=` padding if present. If you want to reject uppercase characters or padding, you need
+    # to perform such checks manually.
+    #
+    # @param data [String] the Base32-encoded input string
+    # @param start_offset [Integer] byte offset in `data` from which Base32 characters should be read
+    # @param prefix [String] string to add at the beginning of the decoded result
+    #
+    # @return [String] a new binary string containing the prefix and the decoded bytes
+    # @raise [ArgumentError] if the offset, length, padding, characters or trailing bits are invalid
+
     def self.decode(data, start_offset = 0, prefix = "")
       total_size = data.bytesize
       raise ArgumentError, "Start offset can't be negative" if start_offset < 0
@@ -96,9 +131,21 @@ module Oxygene
       encoded_end = total_size
 
       if encoded_end > start_offset && data.getbyte(encoded_end - 1) == 61 # '='
+        # Only decode until the beginning of padding
         encoded_end -= 1 while encoded_end > start_offset && data.getbyte(encoded_end - 1) == 61
 
         padding_size = total_size - encoded_end
+
+        # Full blocks are 8 5-bit Base32 characters decoded into 5 8-bit bytes.
+        # Here, we check if in the last incomplete block the padding (if included)
+        # covers the whole rest of the block.
+        #
+        # Because how 5-bit characters map into 8-bit bytes, only a final incomplete
+        # block of 2, 4, 5 or 7 characters makes sense - 1, 3 and 6 don't include enough
+        # bits to create another byte. Which is why padding_size can't be 7 here.
+        #
+        # "n & 7" is the same as "n % 8", just slightly faster.
+
         unpadded_remainder = (encoded_end - start_offset) & 7
         expected_padding = (8 - unpadded_remainder) & 7
 
@@ -107,8 +154,10 @@ module Oxygene
         end
       end
 
-      size = encoded_end - start_offset
-      remainder = size & 7
+      encoded_size = encoded_end - start_offset
+      remainder = encoded_size & 7
+
+      # See above for why only these are allowed
 
       unless remainder == 0 || remainder == 2 || remainder == 4 || remainder == 5 || remainder == 7
         raise ArgumentError, "Invalid Base32 length"
@@ -119,9 +168,15 @@ module Oxygene
       full_block_end = encoded_end - remainder
       table = BASE32_DECODE_TABLE
 
-      # Eight Base32 characters contain 40 bits, which decode to five bytes. Looking
-      # up and combining a complete block at once avoids the arrays, chunks, temporary
-      # one-character strings and arbitrary-size accumulator used by the base32 gem.
+      # Process full blocks of 8 5-bit Base32 characters and decode them into 5 8-bit
+      # bytes. The characters are first mapped into indexes of 0...32, and then combined
+      # into a single 40-bit number, which is sliced into 5 bytes.
+      #
+      # The BASE32_DECODE_TABLE table is a table mapping character indexes 0...256 to
+      # the 0...32 Base32 value. Using this table, a character's index can be looked up in
+      # O(1) time using its .ord code. The special value 255 means that there is no Base32
+      # character with a given ASCII code and that an exception should be raised.
+
       while offset < full_block_end
         v0 = table[data.getbyte(offset)]
         v1 = table[data.getbyte(offset + 1)]
@@ -131,6 +186,10 @@ module Oxygene
         v5 = table[data.getbyte(offset + 5)]
         v6 = table[data.getbyte(offset + 6)]
         v7 = table[data.getbyte(offset + 7)]
+
+        # Combine the bits of the 8 index values using OR. If any of the 8 characters
+        # has any bits above the 6th (in practice it could only be 255), the combined
+        # value will also have the bits set so it will be higher than 31.
 
         invalid_value = v0 | v1 | v2 | v3 | v4 | v5 | v6 | v7
         invalid_character!(data, offset, offset + 8, table) if invalid_value > 31
@@ -145,6 +204,8 @@ module Oxygene
 
         offset += 8
       end
+
+      # Finish the output for the final incomplete block of less than 40 bits:
 
       case remainder
       when 2
@@ -207,6 +268,7 @@ module Oxygene
 
       output
     end
+
 
     def self.invalid_character!(data, offset, end_offset, table)
       offset += 1 while offset < end_offset && table[data.getbyte(offset)] <= 31

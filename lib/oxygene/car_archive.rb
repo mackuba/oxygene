@@ -9,15 +9,40 @@ require 'base64'
 require 'cbor'
 require 'stringio'
 
-# CAR v1: https://ipld.io/specs/transport/car/carv1/
-# multicodec codes: https://github.com/multiformats/multicodec/blob/master/table.csv
-
 module Oxygene
+
+  #
+  # Parses a Content Addressable Archive (CAR) bundle loaded e.g. from an ATProto firehose
+  # message or from a repo .car exported from a PDS. The header part is decoded immediately,
+  # while the subsequent body/data sections are lazily decoded only as requested.
+  #
+  # Only CAR version v1 is supported, and only limited to the features or variants used in ATProto
+  # (e.g. CIDs only in the v1 version as defined in [DASL](https://dasl.ing)).
+  #
+  # Related specifications:
+  #
+  # - [IPLD CAR v1 spec](https://ipld.io/specs/transport/car/carv1/)
+  # - [DASL CAR](https://dasl.ing/car.html)
+  # - [ATProto CAR file serialization](https://atproto.com/specs/repository#car-file-serialization)
+  # - [ATProto data model](https://atproto.com/specs/data-model)
+  # - [multicodec](https://github.com/multiformats/multicodec),
+  #   [multihash](https://github.com/multiformats/multihash)
+  #   and [multibase](https://github.com/multiformats/multibase)
+  #
+
   class CARArchive
     using Oxygene::Extensions
 
+    # @return [Array<CID>] array of root CIDs listed in the archive header
     attr_reader :roots
 
+
+    # Creates a CAR archive reader from an in-memory CAR file.
+    #
+    # @param data [String] CAR archive file as a binary string
+    # @raise [DecodeError] if the archive header has missing or invalid fields
+    # @raise [UnsupportedError] if the archive uses an unsupported CAR version
+    #
     def initialize(data)
       @sections = []
       @section_map = {}
@@ -26,6 +51,29 @@ module Oxygene
 
       read_header(@buffer)
     end
+
+    # Looks up a section with a given CID in the archive, decoding sections as needed.
+    #
+    # Sections are parsed lazily – if the requested section has already been loaded,
+    # it's returned without parsing any more parts of the archive, otherwise unread
+    # sections are parsed only until a match is found.
+    #
+    # When making repeated lookups for sections in one archive, e.g. when walking
+    # the MST tree of a CAR repo, pass the `use_map: true` option, which tells
+    # `CARArchive` to build and use an index that maps CIDs to sections for quicker lookup
+    # (otherwise, parsed sections are searched sequentially). For performance, this isn't
+    # enabled by default, since the common case of processing firehose commit messages only
+    # does a single lookup to find the record data.
+    #
+    # The CID may be passed as either an {Oxygene::CID} object, or its {CID#cbor_form} string.
+    #
+    # @param cid [CID, String] a CID object or its binary CBOR representation, including the leading null byte
+    # @param use_map [Boolean] whether to use and update the lookup index that maps CIDs to sections
+    # @param return_body [Boolean] whether to return the section's JSON body directly instead of an {Oxygene::CARSection} object
+    #
+    # @return [Hash, Array, CARSection, nil] the requested section or its decoded body converted to ATProto JSON, or nil if not found
+    # @raise [DecodeError] if a section is truncated or malformed
+    # @raise [UnsupportedError] if a section uses an unsupported CID encoding
 
     def section_with_cid(cid, use_map: false, return_body: true)
       if found_section = find_parsed_section(cid, use_map)
@@ -39,9 +87,24 @@ module Oxygene
       nil
     end
 
+    # Returns the list of archive sections that have been parsed so far,
+    # without parsing any more sections.
+    #
+    # @return [Array<CARSection>] sections parsed so far, in archive order
+
     def parsed_sections
       @sections.dup.freeze
     end
+
+    # Parses all sections in the archive if they haven't been loaded yet, and
+    # returns the list of all sections in the order as listed in the archive.
+    #
+    # Once all sections have been read, the original archive data buffer is
+    # released so it can be garbage-collected.
+    #
+    # @return [Array<CARSection>] all sections in the archive
+    # @raise [DecodeError] if a section is truncated or malformed
+    # @raise [UnsupportedError] if a section uses an unsupported CID encoding
 
     def sections
       if @buffer
@@ -55,6 +118,18 @@ module Oxygene
 
       @sections
     end
+
+    # @api private
+    #
+    # Converts decoded CBOR values to their ATProto-specific JSON representation.
+    #
+    # The passed hash or array is converted recursively in place. The conversion involves:
+    # - replacing binary strings with `$bytes` objects with Base64-encoded data
+    # - converting CBOR CID tags to `$link` objects holding an {Oxygene::CID}
+    #
+    # @param object [Hash, Array] decoded CBOR object to convert
+    # @return [Hash, Array] the same object, updated in place
+    # @raise [DecodeError] if the top-level value is not a hash or array
 
     def self.convert_data(object)
       if object.is_a?(Hash)
@@ -82,9 +157,26 @@ module Oxygene
       end
     end
 
+    # @api private
+    #
+    # Converts a CBOR CID tag to an ATProto JSON
+    # [$link object](https://atproto.com/specs/data-model#json-representation).
+    #
+    # @param cid [CBOR::Tagged] CBOR tag containing the CID binary data
+    # @return [Hash{String => CID}] a `$link` JSON object
+    # @raise [DecodeError] if the value is not a supported CID
+
     def self.make_cid_link(cid)
       { '$link' => CID.from_cbor_tag(cid) }
     end
+
+    # @api private
+    #
+    # Converts a binary string to an ATProto JSON
+    # [$bytes object](https://atproto.com/specs/data-model#json-representation).
+    #
+    # @param data [String] binary data to encode
+    # @return [Hash{String => String}] a `$bytes` JSON object
 
     def self.make_bytes(data)
       string = Base64.strict_encode64(data)
@@ -92,6 +184,9 @@ module Oxygene
 
       { '$bytes' => string }
     end
+
+    # Returns a string with a representation of the object for debugging purposes.
+    # @return [String]
 
     def inspect
       vars = (instance_variables - [:@section_map]).map { |v|
@@ -104,6 +199,7 @@ module Oxygene
 
       "#<#{self.class}:0x#{object_id} #{vars.join(", ")}>"
     end
+
 
     private
 
@@ -173,6 +269,7 @@ module Oxygene
     def read_section(buffer)
       len = buffer.read_varint
 
+      # TODO: verify content CIDs
       section_data = buffer.read(len)
       raise DecodeError.new("Section too short: #{section_data}") unless section_data.length == len
 
