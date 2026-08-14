@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative 'errors'
+
 module Oxygene
 
   #
@@ -121,7 +123,8 @@ module Oxygene
     # @param prefix [String] string to add at the beginning of the decoded result
     #
     # @return [String] a new binary string containing the prefix and the decoded bytes
-    # @raise [ArgumentError] if the offset, length, padding, characters or trailing bits are invalid
+    # @raise [ArgumentError] if `start_offset` is negative or beyond the end of `data`
+    # @raise [DecodeError] if the data length, padding, characters used or trailing bits are invalid
 
     def self.decode(data, start_offset = 0, prefix = "")
       total_size = data.bytesize
@@ -150,7 +153,7 @@ module Oxygene
         expected_padding = (8 - unpadded_remainder) & 7
 
         if ((total_size - start_offset) & 7) != 0 || padding_size != expected_padding || padding_size > 6
-          raise ArgumentError, "Invalid Base32 padding"
+          raise DecodeError, "Invalid Base32 padding"
         end
       end
 
@@ -160,7 +163,7 @@ module Oxygene
       # See above for why only these are allowed
 
       unless remainder == 0 || remainder == 2 || remainder == 4 || remainder == 5 || remainder == 7
-        raise ArgumentError, "Invalid Base32 length"
+        raise DecodeError, "Invalid Base32 length"
       end
 
       output = prefix.dup.force_encoding(Encoding::BINARY)
@@ -214,7 +217,7 @@ module Oxygene
         invalid_character!(data, offset, encoded_end, table) if (v0 | v1) > 31
 
         value = (v0 << 5) | v1
-        raise ArgumentError, "Invalid Base32 trailing bits" unless (value & 3) == 0
+        raise DecodeError, "Invalid Base32 trailing bits" unless (value & 3) == 0
 
         output << (value >> 2)
 
@@ -226,7 +229,7 @@ module Oxygene
         invalid_character!(data, offset, encoded_end, table) if (v0 | v1 | v2 | v3) > 31
 
         value = (v0 << 15) | (v1 << 10) | (v2 << 5) | v3
-        raise ArgumentError, "Invalid Base32 trailing bits" unless (value & 15) == 0
+        raise DecodeError, "Invalid Base32 trailing bits" unless (value & 15) == 0
 
         output << ((value >> 12) & 255)
         output << ((value >> 4) & 255)
@@ -240,7 +243,7 @@ module Oxygene
         invalid_character!(data, offset, encoded_end, table) if (v0 | v1 | v2 | v3 | v4) > 31
 
         value = (v0 << 20) | (v1 << 15) | (v2 << 10) | (v3 << 5) | v4
-        raise ArgumentError, "Invalid Base32 trailing bits" unless (value & 1) == 0
+        raise DecodeError, "Invalid Base32 trailing bits" unless (value & 1) == 0
 
         output << ((value >> 17) & 255)
         output << ((value >> 9) & 255)
@@ -258,7 +261,7 @@ module Oxygene
 
         value = (v0 << 30) | (v1 << 25) | (v2 << 20) | (v3 << 15) |
                 (v4 << 10) | (v5 << 5) | v6
-        raise ArgumentError, "Invalid Base32 trailing bits" unless (value & 7) == 0
+        raise DecodeError, "Invalid Base32 trailing bits" unless (value & 7) == 0
 
         output << ((value >> 27) & 255)
         output << ((value >> 19) & 255)
@@ -273,7 +276,7 @@ module Oxygene
     def self.invalid_character!(data, offset, end_offset, table)
       offset += 1 while offset < end_offset && table[data.getbyte(offset)] <= 31
       character = data.byteslice(offset, 1)
-      raise ArgumentError, "Invalid Base32 character: #{character.inspect}"
+      raise DecodeError, "Invalid Base32 character: #{character.inspect}"
     end
 
     private_class_method :invalid_character!

@@ -117,20 +117,20 @@ describe Oxygene::Base32 do
     end
 
     it "should reject invalid characters" do
-      expect { Oxygene::Base32.decode("mzx!6") }.to raise_error(ArgumentError, /Invalid Base32 character/)
-      expect { Oxygene::Base32.decode("mzxw6yt+") }.to raise_error(ArgumentError, /Invalid Base32 character/)
+      expect { Oxygene::Base32.decode("mzx!6") }.to raise_error(Oxygene::DecodeError, /Invalid Base32 character/)
+      expect { Oxygene::Base32.decode("mzxw6yt+") }.to raise_error(Oxygene::DecodeError, /Invalid Base32 character/)
     end
 
     it "should reject invalid lengths" do
-      expect { Oxygene::Base32.decode("m") }.to raise_error(ArgumentError, "Invalid Base32 length")
+      expect { Oxygene::Base32.decode("m") }.to raise_error(Oxygene::DecodeError, "Invalid Base32 length")
     end
 
     it "should reject invalid padding" do
-      expect { Oxygene::Base32.decode("my=====") }.to raise_error(ArgumentError, "Invalid Base32 padding")
+      expect { Oxygene::Base32.decode("my=====") }.to raise_error(Oxygene::DecodeError, "Invalid Base32 padding")
     end
 
     it "should reject non-zero trailing bits" do
-      expect { Oxygene::Base32.decode("mz") }.to raise_error(ArgumentError, "Invalid Base32 trailing bits")
+      expect { Oxygene::Base32.decode("mz") }.to raise_error(Oxygene::DecodeError, "Invalid Base32 trailing bits")
     end
   end
 end
