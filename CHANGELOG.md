@@ -1,4 +1,4 @@
-## [0.1.0] - (unreleased)
+## [0.1.0] - 2026-08-17
 
 * added custom, much faster Base32 encoder/decoder, dropping `base32` gem dependency
 * added `CARRepo` (subclass of `CARArchive`) for parsing and processing ATProto repo CAR archives:
