@@ -200,9 +200,6 @@ module Oxygene
     # @return [String] frozen CID string beginning with {JSON_PREFIX}
 
     def json_form
-      #TMP
-      @binary_data = (CBOR_TAG_PREFIX + @data).freeze if @data
-
       @json_form ||= Base32.encode(@cbor_form, 1, JSON_PREFIX).freeze
     end
 
