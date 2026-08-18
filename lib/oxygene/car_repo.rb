@@ -102,7 +102,7 @@ module Oxygene
 
       (data['e'] || []).each do |e|
         if previous
-          key = previous[0...e['p']]
+          key = previous.byteslice(0, e['p'])
           key << e['k']
         else
           key = e['k']
