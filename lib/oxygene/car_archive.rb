@@ -268,13 +268,16 @@ module Oxygene
 
     def read_section(buffer)
       len = buffer.read_varint
+      raise DecodeError, "Section length is too short: #{len}" if len < 36
 
       # TODO: verify content CIDs
-      section_data = buffer.read(len)
-      raise DecodeError.new("Section too short: #{section_data}") unless section_data.length == len
+      cid_data = buffer.read(36)
+      body_data = buffer.read(len - 36)
 
-      cid_data = section_data.byteslice(0, 36)
-      body_data = section_data.byteslice(36..)
+      unless cid_data&.bytesize == 36 && body_data&.bytesize == len - 36
+        raise DecodeError, "Section is truncated"
+      end
+
       cid_data.prepend(CID::CBOR_TAG_PREFIX)
       cid = CID.new(cid_data, binary: true, cbor_prefix: true, codec: :drisl)
 

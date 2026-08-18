@@ -161,7 +161,7 @@ describe Oxygene::CARArchive do
       truncated_data = fixture_data.byteslice(0, fixture_data.bytesize - 1)
       truncated_archive = Oxygene::CARArchive.new(truncated_data)
 
-      expect { truncated_archive.sections }.to raise_error(Oxygene::DecodeError, /Section too short/)
+      expect { truncated_archive.sections }.to raise_error(Oxygene::DecodeError, /Section is truncated/)
     end
 
     it "should reject a section with a truncated length varint" do
@@ -210,7 +210,7 @@ describe Oxygene::CARArchive do
       truncated_data = fixture_data.byteslice(0, header_size) + "\x14".b + short_section
       truncated_archive = Oxygene::CARArchive.new(truncated_data)
 
-      expect { truncated_archive.sections }.to raise_error(Oxygene::DecodeError, /CID too short/)
+      expect { truncated_archive.sections }.to raise_error(Oxygene::DecodeError, /Section length is too short/)
     end
 
     it "should reject a non-canonically encoded CID prefix" do
