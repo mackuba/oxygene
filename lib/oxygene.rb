@@ -4,6 +4,7 @@ require_relative 'oxygene/base32'
 require_relative 'oxygene/car_archive'
 require_relative 'oxygene/car_repo'
 require_relative 'oxygene/cid'
+require_relative 'oxygene/star_archive'
 require_relative 'oxygene/version'
 
 #
