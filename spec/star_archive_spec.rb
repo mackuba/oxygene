@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'json'
 require 'oxygene/star_archive'
 
 describe Oxygene::STARArchive do
