@@ -8,6 +8,10 @@ require 'stringio'
 
 module Oxygene
 
+  #
+  # Parser for STAR archives (experimental).
+  #
+
   class STARArchive
     using Oxygene::Extensions
 

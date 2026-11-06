@@ -1,3 +1,9 @@
+## [0.1.1] - 2026-11-06
+
+* added experimental parser for STAR archives (`Oxygene::STARArchive`)
+* some minor optimizations
+* bumped up `cbor` gem dependency to 0.6
+
 ## [0.1.0] - 2026-08-17
 
 * added custom, much faster Base32 encoder/decoder, dropping `base32` gem dependency
