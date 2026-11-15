@@ -2,5 +2,6 @@
 coverage
 doc
 Gemfile.lock
+tests
 .rspec_status
 .yardoc
