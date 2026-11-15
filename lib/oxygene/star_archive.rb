@@ -26,7 +26,7 @@ module Oxygene
 
       read_header(@buffer)
 
-      loop do
+      while true
         had_data = read_section(@buffer)
         break if !had_data
       end
@@ -98,12 +98,14 @@ module Oxygene
 
       key = buffer.read(k_len)
       raise DecodeError, "Truncated key data" if key.nil? || key.length != k_len
+      key.freeze
 
       v_len = read_varint(buffer)
       raise DecodeError, "Unexpected end of file" if v_len.nil?
 
       value = buffer.read(v_len)
       raise DecodeError, "Truncated value data" if value.nil? || value.length != v_len
+      value.freeze
 
       @data_pairs << [key, value]
       @data_map[key] = value
