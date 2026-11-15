@@ -4,9 +4,7 @@ require_relative 'car_section'
 require_relative 'cbor'
 require_relative 'cid'
 require_relative 'errors'
-require_relative 'extensions'
-
-require 'stringio'
+require_relative 'varint_reader'
 
 module Oxygene
 
@@ -30,8 +28,6 @@ module Oxygene
   #
 
   class CARArchive
-    using Oxygene::Extensions
-
     # @return [Array<CID>] array of root CIDs listed in the archive header
     attr_reader :roots
 
@@ -39,16 +35,24 @@ module Oxygene
     # Creates a CAR archive reader from an in-memory CAR file.
     #
     # @param data [String] CAR archive file as a binary string
+    # @raise [ArgumentError] if the data is not a binary string
     # @raise [DecodeError] if the archive header has missing or invalid fields
     # @raise [UnsupportedError] if the archive uses an unsupported CAR version
     #
     def initialize(data)
+      unless data.is_a?(String) && data.encoding == Encoding::BINARY
+        raise ArgumentError, "data should be a binary string"
+      end
+
       @sections = []
       @section_map = {}
-      @buffer = StringIO.new(data)
+      @buffer = data.freeze
+      @size = data.bytesize
+      @offset = 0
+      @varint_reader = VarintReader.new(data)
       @map_needs_update = false
 
-      read_header(@buffer)
+      read_header
     end
 
     # Looks up a section with a given CID in the archive, decoding sections as needed.
@@ -107,12 +111,12 @@ module Oxygene
 
     def sections
       if @buffer
-        if !@buffer.eof?
-          read_section(@buffer) while !@buffer.eof?
+        if @offset != @size
           @map_needs_update = true
+          read_section while @offset != @size
         end
 
-        @buffer = nil
+        release_buffer
       end
 
       @sections
@@ -122,7 +126,7 @@ module Oxygene
     # @return [String]
 
     def inspect
-      vars = (instance_variables - [:@section_map]).map { |v|
+      vars = (instance_variables - [:@section_map, :@varint_reader]).map { |v|
         if v == :@sections && @buffer
           "#{v}=[...]"
         else
@@ -159,8 +163,8 @@ module Oxygene
 
       is_cid = cid.is_a?(CID)
 
-      while !@buffer.eof?
-        section = read_section(@buffer)
+      while @offset != @size
+        section = read_section
 
         if use_map
           @section_map[section.cid.cbor_form] = section
@@ -172,16 +176,26 @@ module Oxygene
         return section if match
       end
 
-      @buffer = nil
+      release_buffer
     end
 
-    def read_header(buffer)
-      len = buffer.read_varint
+    def release_buffer
+      @buffer = nil
+      @varint_reader = nil
+    end
+
+    def read_header
+      len = @varint_reader.read_next
       raise DecodeError.new("Header length cannot be 0") if len == 0
 
-      header_data = buffer.read(len)
-      raise DecodeError.new("Header too short: #{header_data}") unless header_data.length == len
+      offset = @varint_reader.offset
+      finish = offset + len
 
+      if finish > @size
+        raise DecodeError, "Header too short: got #{@size - offset} bytes, expected #{len}"
+      end
+
+      header_data = @buffer.byteslice(offset, len)
       header = Oxygene::CBOR.decode(header_data)
       raise DecodeError.new("Metadata object should be a hash") unless header.is_a?(Hash)
       raise UnsupportedError.new("Unexpected CAR version: #{header['version']}") unless header['version'] == 1
@@ -195,26 +209,27 @@ module Oxygene
       end
 
       @roots = roots.freeze
+      @offset = finish
     end
 
-    def read_section(buffer)
-      len = buffer.read_varint
+    def read_section
+      len = @varint_reader.read(@offset)
       raise DecodeError, "Section length is too short: #{len}" if len < 36
 
+      offset = @varint_reader.offset
+      finish = offset + len
+      raise DecodeError, "Section is truncated" if finish > @size
+
       # TODO: verify content CIDs
-      cid_data = buffer.read(36)
-      body_data = buffer.read(len - 36)
-
-      unless cid_data&.bytesize == 36 && body_data&.bytesize == len - 36
-        raise DecodeError, "Section is truncated"
-      end
-
+      cid_data = @buffer.byteslice(offset, 36)
       cid_data.prepend(CID::CBOR_TAG_PREFIX)
       cid = CID.new(cid_data, binary: true, cbor_prefix: true, codec: :drisl)
 
+      body_data = @buffer.byteslice(offset + 36, len - 36)
       new_section = CARSection.new(cid, body_data)
 
       @sections << new_section
+      @offset = finish
 
       new_section
     end

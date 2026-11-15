@@ -2,7 +2,7 @@
 
 require_relative 'base32'
 require_relative 'errors'
-require_relative 'extensions'
+require_relative 'varint_reader'
 
 module Oxygene
 
@@ -50,8 +50,6 @@ module Oxygene
   #
 
   class CID
-    using Oxygene::Extensions
-
     # Multibase prefix code for Base32, required for CIDs in JSON string form.
     JSON_PREFIX = 'b'
 
@@ -356,22 +354,21 @@ module Oxygene
 
       # At this point we're rejecting the CID, we just check with what error message:
 
-      buffer = StringIO.new(data)
-      buffer.pos = 1 if cbor_prefix
+      varint_reader = VarintReader.new(data)
 
-      version = buffer.read_varint
+      version = varint_reader.read(cbor_prefix ? 1 : 0)
       raise UnsupportedError.new("Unexpected CID version: #{version}") unless version == 1
 
-      codec = buffer.read_varint
+      codec = varint_reader.read_next
       supported_codec = expected_codec ? (codec == expected_codec) : (codec == DRISL_CODEC_ID || codec == RAW_CODEC_ID)
       raise UnsupportedError.new("Unexpected CID codec: #{codec}") unless supported_codec
 
-      hash = buffer.read_varint
+      hash = varint_reader.read_next
       raise UnsupportedError.new("Unexpected CID hash: #{hash}") unless hash == 0x12
 
-      length = buffer.read_varint
+      length = varint_reader.read_next
       raise UnsupportedError.new("Unexpected CID length: #{length}") unless length == 32
-
+    rescue NonMinimalEncodingError
       raise UnsupportedError.new("Non-canonical CID prefix")
     end
   end

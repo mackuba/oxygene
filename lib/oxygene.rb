@@ -5,7 +5,9 @@ require_relative 'oxygene/car_archive'
 require_relative 'oxygene/car_repo'
 require_relative 'oxygene/cbor'
 require_relative 'oxygene/cid'
+require_relative 'oxygene/extensions'
 require_relative 'oxygene/star_archive'
+require_relative 'oxygene/varint_reader'
 require_relative 'oxygene/version'
 
 #

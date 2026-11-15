@@ -26,11 +26,13 @@ describe Oxygene::STARArchive do
   end
 
   invalid_fixtures.each do |item|
-    # TODO
-    next if item['comment'].include?('non-canonical')
-    next if item['comment'].include?('invalid drisl') && $native_cbor
+    comment = item['comment']
 
-    it "should reject '#{item['comment']}'" do
+    if $native_cbor
+      next if comment.include?('invalid drisl') || comment == 'non-canonical meta serialization'
+    end
+
+    it "should reject '#{comment}'" do
       hex = item['star_hex']
       binary = [hex].pack('H*')
 

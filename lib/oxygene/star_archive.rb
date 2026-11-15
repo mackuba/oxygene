@@ -2,9 +2,7 @@
 
 require_relative 'cbor'
 require_relative 'errors'
-require_relative 'extensions'
-
-require 'stringio'
+require_relative 'varint_reader'
 
 module Oxygene
 
@@ -13,29 +11,35 @@ module Oxygene
   #
 
   class STARArchive
-    using Oxygene::Extensions
-
     MAGIC_PREFIX = "\x2A\x6C\x01\x00"
 
     attr_reader :data_pairs, :data_map, :metadata
 
     def initialize(data)
-      @buffer = StringIO.new(data)
+      unless data.is_a?(String) && data.encoding == Encoding::BINARY
+        raise ArgumentError, "data should be a binary string"
+      end
+
+      @buffer = data.freeze
+      @size = data.bytesize
+      @offset = 0
+      @varint_reader = VarintReader.new(data)
       @data_pairs = []
       @data_map = {}
 
-      read_header(@buffer)
+      read_header
 
       while true
-        had_data = read_section(@buffer)
+        had_data = read_section
         break if !had_data
       end
 
       @buffer = nil
+      @varint_reader = nil
     end
 
     def inspect
-      vars = (instance_variables - [:@data_map]).map { |v|
+      vars = (instance_variables - [:@data_map, :@varint_reader]).map { |v|
         "#{v}=#{instance_variable_get(v).inspect}"
       }
 
@@ -45,18 +49,22 @@ module Oxygene
 
     private
 
-    def read_header(buffer)
-      magic = buffer.read(MAGIC_PREFIX.length)
+    def read_header
+      magic_size = MAGIC_PREFIX.bytesize
+      magic = @buffer.byteslice(0, magic_size)
       raise DecodeError.new("Missing initial magic bytes") unless magic == MAGIC_PREFIX
 
-      header_len = read_varint(buffer)
+      header_len = @varint_reader.read(magic_size)
       raise DecodeError.new("Header length cannot be 0") if header_len == 0
 
-      header_data = buffer.read(header_len)
+      offset = @varint_reader.offset
+      finish = offset + header_len
 
-      unless header_data.length == header_len
-        raise DecodeError.new("Header too short: got #{header_data.length} bytes, expected #{header_len}")
+      if finish > @size
+        raise DecodeError.new("Header too short: got #{@size - offset} bytes, expected #{header_len}")
       end
+
+      header_data = @buffer.byteslice(offset, header_len)
 
       begin
         metadata = Oxygene::CBOR.decode(header_data)
@@ -72,19 +80,20 @@ module Oxygene
 
       @type = type
       @metadata = metadata
+      @offset = finish
     end
 
-    def read_section(buffer)
-      control_byte = buffer.getbyte
+    def read_section
+      control_byte = @buffer.getbyte(@offset)
+      offset = @offset + 1
 
       case control_byte
       when 0
         # end of file
-        if @buffer.eof?
-          return false
-        else
-          raise DecodeError, "Unexpected content after end of file marker"
-        end
+        raise DecodeError, "Unexpected content after end of file marker" unless offset == @size
+
+        @offset = offset
+        return false
       when 1
         # continue with the next section
       when nil
@@ -93,34 +102,24 @@ module Oxygene
         raise DecodeError, "Unexpected control byte: #{control_byte}"
       end
 
-      k_len = read_varint(buffer)
-      raise DecodeError, "Unexpected end of file" if k_len.nil?
+      k_len = @varint_reader.read(offset)
+      key_start = @varint_reader.offset
+      key_end = key_start + k_len
+      raise DecodeError, "Truncated key data" if key_end > @size
 
-      key = buffer.read(k_len)
-      raise DecodeError, "Truncated key data" if key.nil? || key.length != k_len
-      key.freeze
+      v_len = @varint_reader.read(key_end)
+      value_start = @varint_reader.offset
+      value_end = value_start + v_len
+      raise DecodeError, "Truncated value data" if value_end > @size
 
-      v_len = read_varint(buffer)
-      raise DecodeError, "Unexpected end of file" if v_len.nil?
-
-      value = buffer.read(v_len)
-      raise DecodeError, "Truncated value data" if value.nil? || value.length != v_len
-      value.freeze
+      key = @buffer.byteslice(key_start, k_len).freeze
+      value = @buffer.byteslice(value_start, v_len).freeze
 
       @data_pairs << [key, value]
       @data_map[key] = value
+      @offset = value_end
 
       true
-    end
-
-    def read_varint(buffer)
-      pos_before = buffer.pos
-      value = buffer.read_varint
-      length = buffer.pos - pos_before
-
-      raise DecodeError, "Varint length exceeds limit" if length > 9
-
-      value
     end
   end
 end

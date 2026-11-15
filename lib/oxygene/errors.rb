@@ -14,6 +14,12 @@ module Oxygene
   end
 
   #
+  # Raised when a value is encoded in a syntactically correct way, but in a non-minimal form.
+  #
+  class NonMinimalEncodingError < DecodeError
+  end
+
+  #
   # Raised when a piece of data is technically formatted correctly, but not in a version
   # that this library currently supports (or that is used in ATProto).
   #

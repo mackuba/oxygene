@@ -32,6 +32,18 @@ describe Oxygene::CARArchive do
       )
     end
 
+    it "should reject a header with a non-minimal length varint" do
+      invalid_data = [fixture_data.getbyte(0) | 0x80, 0].pack("C*") + fixture_data.byteslice(1..-1)
+
+      expect { Oxygene::CARArchive.new(invalid_data) }.to raise_error(Oxygene::NonMinimalEncodingError)
+    end
+
+    it "should reject a declared header length larger than the available bytes after it" do
+      oversized_length = ("\xFF".b * 8) + "\x7F".b
+
+      expect { Oxygene::CARArchive.new(oversized_length) }.to raise_error(Oxygene::DecodeError, /Header too short/)
+    end
+
     it "should reject a zero-length header" do
       expect { Oxygene::CARArchive.new("\x00".b) }.to raise_error(Oxygene::DecodeError, "Header length cannot be 0")
     end
@@ -158,11 +170,12 @@ describe Oxygene::CARArchive do
     end
 
     it "should free the data buffer for GC cleanup" do
-      archive.instance_variable_get(:@buffer).should_not be_nil
+      archive.instance_variable_get(:@buffer).should equal(fixture_data)
 
-      sections = archive.sections
+      archive.sections
 
       archive.instance_variable_get(:@buffer).should be_nil
+      archive.instance_variable_get(:@varint_reader).should be_nil
     end
 
     it "should reject truncated sections" do
@@ -170,6 +183,9 @@ describe Oxygene::CARArchive do
       truncated_archive = Oxygene::CARArchive.new(truncated_data)
 
       expect { truncated_archive.sections }.to raise_error(Oxygene::DecodeError, /Section is truncated/)
+      truncated_archive.parsed_sections.length.should == 10
+      expect { truncated_archive.sections }.to raise_error(Oxygene::DecodeError, /Section is truncated/)
+      truncated_archive.parsed_sections.length.should == 10
     end
 
     it "should reject a section with a truncated length varint" do
@@ -179,6 +195,13 @@ describe Oxygene::CARArchive do
       expect { truncated_archive.sections }.to raise_error(
         Oxygene::DecodeError, "Unexpected end of data while reading varint"
       )
+    end
+
+    it "should reject a section with a length varint longer than nine bytes" do
+      invalid_data = fixture_data.byteslice(0, header_size) + ("\x80".b * 9) + "\x01".b
+      invalid_archive = Oxygene::CARArchive.new(invalid_data)
+
+      expect { invalid_archive.sections }.to raise_error(Oxygene::DecodeError, "Varint length exceeds limit")
     end
 
     it "should reject unsupported CID version" do
@@ -306,6 +329,7 @@ describe Oxygene::CARArchive do
         archive.section_with_cid(missing_cid)
 
         archive.instance_variable_get(:@buffer).should be_nil
+        archive.instance_variable_get(:@varint_reader).should be_nil
       end
     end
 

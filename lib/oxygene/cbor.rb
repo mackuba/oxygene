@@ -315,7 +315,7 @@ module Oxygene
         end
 
         raise DecodeError, "Truncated CBOR argument" unless value
-        raise DecodeError, "Non-minimal CBOR argument encoding" if value < minimum
+        raise NonMinimalEncodingError, "Non-minimal CBOR argument encoding" if value < minimum
 
         @offset = offset + byte_width
         value
