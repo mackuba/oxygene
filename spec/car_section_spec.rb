@@ -2,12 +2,12 @@
 
 describe Oxygene::CARSection do
   cid_data = "\x00\x01\x71\x12\x20".b + ("\x11".b * 32)
-  tagged_cid = CBOR::Tagged.new(42, cid_data)
+  tagged_cid = ::CBOR::Tagged.new(42, cid_data)
 
   body_object = {
+    "link" => tagged_cid,
     "type" => "example",
-    "bytes" => "\x00\x01\x02\xFF".b,
-    "link" => tagged_cid
+    "bytes" => "\x00\x01\x02\xFF".b
   }
 
   encoded_data = CBOR.encode(body_object)
@@ -28,8 +28,8 @@ describe Oxygene::CARSection do
 
       body['type'].should == "example"
       body['bytes'].should == "\x00\x01\x02\xFF".b
-      body['link'].should be_a(CBOR::Tagged)
-      body['link'].value.should == cid_data
+      body['link'].should be_a(Oxygene::CID)
+      body['link'].cbor_form.should == cid_data
     end
   end
 
@@ -49,7 +49,7 @@ describe Oxygene::CARSection do
       section.json_body
 
       decoded_body['bytes'].should == "\x00\x01\x02\xFF".b
-      decoded_body['link'].should be_a(CBOR::Tagged)
+      decoded_body['link'].should be_a(Oxygene::CID)
     end
   end
 

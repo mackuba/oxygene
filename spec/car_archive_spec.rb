@@ -11,6 +11,10 @@ describe Oxygene::CARArchive do
   first_section_cid_offset = fixture_data.index("\x01\x71\x12\x20".b, header_size)
 
   def build_archive_header(metadata)
+    if metadata.is_a?(Hash)
+      metadata = metadata.sort_by { |key, _| [key.bytesize, key] }.to_h
+    end
+
     header = CBOR.encode(metadata)
     [header.bytesize].pack("C") + header
   end
@@ -65,15 +69,19 @@ describe Oxygene::CARArchive do
     it "should reject a value in the roots array that is not a CBOR CID tag" do
       invalid_data = build_archive_header({ "version" => 1, "roots" => ["invalid"] })
 
-      expect { Oxygene::CARArchive.new(invalid_data) }.to raise_error(Oxygene::DecodeError, /Unexpected value in the roots array:/)
+      expect { Oxygene::CARArchive.new(invalid_data) }.to raise_error(
+        Oxygene::DecodeError, /Unexpected value in the roots array:/
+      )
     end
 
     it "should reject a root with a CBOR tag other than 42" do
       root_data = Oxygene::CID.from_json(root_cid).cbor_form
-      invalid_root = CBOR::Tagged.new(41, root_data)
+      invalid_root = ::CBOR::Tagged.new(41, root_data)
       invalid_data = build_archive_header({ "version" => 1, "roots" => [invalid_root] })
 
-      expect { Oxygene::CARArchive.new(invalid_data) }.to raise_error(Oxygene::DecodeError, /Unexpected value in the roots array/)
+      expect { Oxygene::CARArchive.new(invalid_data) }.to raise_error(
+        Oxygene::UnsupportedError, "Only CBOR tag 42 \(CID\) is supported (got: 41)"
+      )
     end
   end
 
@@ -220,7 +228,7 @@ describe Oxygene::CARArchive do
       canonical_cid = "\x00\x01".b + dag_cbor_codec + sha256_multihash
 
       header = CBOR.encode({
-        "roots" => [CBOR::Tagged.new(42, canonical_cid)],
+        "roots" => [::CBOR::Tagged.new(42, canonical_cid)],
         "version" => 1
       })
 
@@ -447,13 +455,13 @@ describe Oxygene::CARArchive do
     it "should convert a binary string to a JSON representation with Base64 encoding" do
       binary = "base64".b
 
-      Oxygene::CARArchive.make_bytes(binary).should == { "$bytes" => "YmFzZTY0" }
+      Oxygene::CBOR.make_bytes(binary).should == { "$bytes" => "YmFzZTY0" }
     end
 
     it "should include no '=' padding" do
       binary = "\xEB\e8Z\xE1\xDC\x8F\xE1\xBA\xD3\xB9\xF4\xF7P\x89\x01".b
 
-      Oxygene::CARArchive.make_bytes(binary).should == { "$bytes" => "6xs4WuHcj+G607n091CJAQ" }
+      Oxygene::CBOR.make_bytes(binary).should == { "$bytes" => "6xs4WuHcj+G607n091CJAQ" }
     end
 
     it "should remove intermediate newlines from longer Base64 data" do
@@ -461,7 +469,7 @@ describe Oxygene::CARArchive do
       base64_string = Base64.encode64(data)
       base64_string.chomp.should include("\n")
 
-      output = Oxygene::CARArchive.make_bytes(data)
+      output = Oxygene::CBOR.make_bytes(data)
       output.should == { '$bytes' => base64_string.gsub(/\n/, '').gsub(/=+$/, '') }
     end
   end

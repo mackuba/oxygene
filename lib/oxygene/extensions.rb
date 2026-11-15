@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require 'cbor'
 require 'stringio'
 require_relative 'errors'
 
@@ -25,21 +24,6 @@ module Oxygene
         value
       rescue EOFError
         raise DecodeError, "Unexpected end of data while reading varint"
-      end
-    end
-
-    refine CBOR.singleton_class do
-      def decode_sequence(data)
-        unpacker = CBOR::Unpacker.new
-        unpacker.feed(data)
-
-        items = []
-
-        while !unpacker.buffer.empty?
-          items << unpacker.read
-        end
-
-        items
       end
     end
 

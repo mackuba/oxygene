@@ -1,12 +1,11 @@
 # frozen_string_literal: true
 
 require_relative 'car_section'
+require_relative 'cbor'
 require_relative 'cid'
 require_relative 'errors'
 require_relative 'extensions'
 
-require 'base64'
-require 'cbor'
 require 'stringio'
 
 module Oxygene
@@ -119,72 +118,6 @@ module Oxygene
       @sections
     end
 
-    # @api private
-    #
-    # Converts decoded CBOR values to their ATProto-specific JSON representation.
-    #
-    # The passed hash or array is converted recursively in place. The conversion involves:
-    # - replacing binary strings with `$bytes` objects with Base64-encoded data
-    # - converting CBOR CID tags to `$link` objects holding an {Oxygene::CID}
-    #
-    # @param object [Hash, Array] decoded CBOR object to convert
-    # @return [Hash, Array] the same object, updated in place
-    # @raise [DecodeError] if the top-level value is not a hash or array
-
-    def self.convert_data(object)
-      if object.is_a?(Hash)
-        object.each do |k, v|
-          if v.is_a?(Hash) || v.is_a?(Array)
-            convert_data(v)
-          elsif v.is_a?(CBOR::Tagged)
-            object[k] = make_cid_link(v)
-          elsif v.is_a?(String) && v.encoding == Encoding::ASCII_8BIT
-            object[k] = make_bytes(v)
-          end
-        end
-      elsif object.is_a?(Array)
-        object.each_with_index do |v, i|
-          if v.is_a?(Hash) || v.is_a?(Array)
-            convert_data(v)
-          elsif v.is_a?(CBOR::Tagged)
-            object[i] = make_cid_link(v)
-          elsif v.is_a?(String) && v.encoding == Encoding::ASCII_8BIT
-            object[i] = make_bytes(v)
-          end
-        end
-      else
-        raise DecodeError, "Unexpected value type in record: #{object}"
-      end
-    end
-
-    # @api private
-    #
-    # Converts a CBOR CID tag to an ATProto JSON
-    # [$link object](https://atproto.com/specs/data-model#json-representation).
-    #
-    # @param cid [CBOR::Tagged] CBOR tag containing the CID binary data
-    # @return [Hash{String => CID}] a `$link` JSON object
-    # @raise [DecodeError] if the value is not a supported CID
-
-    def self.make_cid_link(cid)
-      { '$link' => CID.from_cbor_tag(cid) }
-    end
-
-    # @api private
-    #
-    # Converts a binary string to an ATProto JSON
-    # [$bytes object](https://atproto.com/specs/data-model#json-representation).
-    #
-    # @param data [String] binary data to encode
-    # @return [Hash{String => String}] a `$bytes` JSON object
-
-    def self.make_bytes(data)
-      string = Base64.strict_encode64(data)
-      string.chomp!('=') while string.getbyte(-1) == 61
-
-      { '$bytes' => string }
-    end
-
     # Returns a string with a representation of the object for debugging purposes.
     # @return [String]
 
@@ -249,7 +182,7 @@ module Oxygene
       header_data = buffer.read(len)
       raise DecodeError.new("Header too short: #{header_data}") unless header_data.length == len
 
-      header = CBOR.decode(header_data)
+      header = Oxygene::CBOR.decode(header_data)
       raise DecodeError.new("Metadata object should be a hash") unless header.is_a?(Hash)
       raise UnsupportedError.new("Unexpected CAR version: #{header['version']}") unless header['version'] == 1
 
@@ -257,13 +190,11 @@ module Oxygene
       raise DecodeError.new("Missing 'roots' field") if roots.nil?
       raise DecodeError.new("Invalid 'roots' field: #{roots.inspect}") unless roots.is_a?(Array)
 
-      @roots = header['roots'].map { |x|
-        if x.is_a?(CBOR::Tagged) && x.tag == 42
-          CID.from_cbor_tag(x)
-        else
-          raise DecodeError.new("Unexpected value in the roots array: #{x.inspect}")
-        end
-      }.freeze
+      roots.each do |root|
+        raise DecodeError, "Unexpected value in the roots array: #{root.inspect}" unless root.is_a?(CID)
+      end
+
+      @roots = roots.freeze
     end
 
     def read_section(buffer)

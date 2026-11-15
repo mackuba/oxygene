@@ -214,13 +214,13 @@ describe Oxygene::CID do
     include_examples "a JSON CID constructor", build_cid: ->(data) { Oxygene::CID.from_json(data) }
   end
 
-  describe ".from_cbor_tag" do
+  describe ".from_cbor_bytes" do
     include_examples "a binary CID constructor",
-      build_cid: ->(data) { Oxygene::CID.from_cbor_tag(CBOR::Tagged.new(42, data)) },
+      build_cid: ->(data) { Oxygene::CID.from_cbor_bytes(data) },
       wrap_binary_data: ->(data) { "\x00".b + data }
 
     include_examples "a prefixed binary CID constructor",
-      build_cid: ->(data) { Oxygene::CID.from_cbor_tag(CBOR::Tagged.new(42, data)) }
+      build_cid: ->(data) { Oxygene::CID.from_cbor_bytes(data) }
   end
 
   describe "CID.new" do
@@ -463,7 +463,7 @@ describe Oxygene::CID do
 
   describe "#data" do
     it "should be an alias for #raw_data" do
-      cid = Oxygene::CID.from_cbor_tag(CBOR::Tagged.new(42, "\x00".b + test_cids.first.last))
+      cid = Oxygene::CID.from_cbor_bytes("\x00".b + test_cids.first.last)
 
       cid.data.should equal(cid.raw_data)
       cid.data.should == test_cids.first.last

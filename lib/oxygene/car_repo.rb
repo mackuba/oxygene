@@ -24,7 +24,8 @@ module Oxygene
     # Creates an ATProto repository reader from an in-memory CAR file.
     #
     # @param data [String] CAR archive file as a binary string
-    # @raise [DecodeError] if the CAR header has missing or invalid fields, the root commit is missing, or a section has invalid data
+    # @raise [DecodeError] if the CAR header has missing or invalid fields, the root commit is missing,
+    #   or a section has invalid data
     # @raise [UnsupportedError] if the archive, section CID or repository is in an unsupported version
     #
     def initialize(data)
@@ -87,7 +88,7 @@ module Oxygene
     def walk_all_nodes(starting_node_cid = nil, &block)
       if starting_node_cid.nil?
         commit = commit_section.decoded_body
-        tree_top_cid = commit['data'].value
+        tree_top_cid = commit['data']
         return walk_all_nodes(tree_top_cid, &block)
       end
 
@@ -95,25 +96,34 @@ module Oxygene
       raise DecodeError, "MST node not found in the archive: #{starting_node_cid.inspect}" if data.nil?
 
       if data['l']
-        walk_all_nodes(data['l'].value, &block)
+        walk_all_nodes(data['l'], &block)
       end
 
       previous = nil
 
       (data['e'] || []).each do |e|
+        k = e['k']
+
+        unless k.is_a?(String) && k.encoding == Encoding::BINARY
+          raise DecodeError, "Repository MST key must be a byte string (got: #{k.class})"
+        end
+
         if previous
           key = previous.byteslice(0, e['p'])
-          key << e['k']
+          key << k
         else
-          key = e['k']
+          key = k
         end
 
         previous = key
 
-        block.call(key, CID.from_cbor_tag(e['v']))
+        v = e['v']
+        raise DecodeError, "Repository MST value must be a CID (got: #{v.class})" unless v.is_a?(CID)
+
+        block.call(key.freeze, v)
 
         if e['t']
-          walk_all_nodes(e['t'].value, &block)
+          walk_all_nodes(e['t'], &block)
         end
       end
     end

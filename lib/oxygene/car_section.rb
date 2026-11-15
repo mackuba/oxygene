@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
-require_relative 'car_archive'
-require 'cbor'
+require_relative 'cbor'
 
 module Oxygene
 
@@ -27,33 +26,44 @@ module Oxygene
       @data = data
     end
 
-    # Decodes the body from CBOR, without performing ATProto JSON specific conversions.
+    # Decodes the body from CBOR, without performing all ATProto JSON specific conversions.
     #
-    # The result is decoded once and memoized. CID links are represented as {CBOR::Tagged}
-    # objects, and byte strings remain binary strings.
+    # CID links are represented as {CID} objects, and byte strings as binary strings.
     #
     # @return [Object] section data decoded from CBOR
 
     def decoded_body
-      @decoded_body ||= CBOR.decode(@data)
+      @decoded_body ||= Oxygene::CBOR.decode(@data)
     end
 
-    # Decodes the body and converts it to an ATProto JSON compatible format.
+    # Decodes the body from CBOR and converts it to an ATProto JSON compatible format.
     #
     # The conversion involves:
     # - replacing binary strings with `$bytes` objects with Base64-encoded data
-    # - converting CBOR CID tags to `$link` objects holding an {Oxygene::CID}
-    #
-    # The result is decoded and stored separately from {#decoded_body}, so calling this
-    # method does not mutate the value returned by {#decoded_body}.
+    # - wrapping {CID} values decoded from CBOR CID tags into `$link` objects
     #
     # @return [Hash, Array] decoded ATProto JSON compatible body
     # @raise [DecodeError] if the decoded top-level value is not a hash or array
 
     def json_body
-      @json_body ||= CARArchive.convert_data(CBOR.decode(@data))
+      @json_body ||= begin
+        validate_section_cbor_type(@data)
+        Oxygene::CBOR.decode(@data, json: true)
+      end
     end
 
     alias body json_body
+
+
+    private
+
+    def validate_section_cbor_type(data)
+      head = data.getbyte(0)
+      major = head && (head >> 5)
+
+      unless major && (major == 4 || major == 5)
+        raise DecodeError, "Expected a CBOR map or array in record (got major: #{major})"
+      end
+    end
   end
 end

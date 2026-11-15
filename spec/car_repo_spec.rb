@@ -6,7 +6,7 @@ describe Oxygene::CARRepo do
   root_cid = Oxygene::CARArchive.new(fixture_data).roots.first
 
   def build_repo(root_cid, commit_body)
-    header = CBOR.encode({ "version" => 1, "roots" => [CBOR::Tagged.new(42, root_cid.cbor_form)] })
+    header = CBOR.encode({ "roots" => [::CBOR::Tagged.new(42, root_cid.cbor_form)], "version" => 1 })
     section = root_cid.raw_data + CBOR.encode(commit_body)
     [header.bytesize].pack("C") + header + [section.bytesize].pack("C") + section
   end
@@ -15,7 +15,7 @@ describe Oxygene::CARRepo do
 
   describe ".new" do
     it "should reject an archive without a root commit" do
-      header = CBOR.encode({ "version" => 1, "roots" => [] })
+      header = CBOR.encode({ "roots" => [], "version" => 1 })
       archive_data = [header.bytesize].pack("C") + header
 
       expect { Oxygene::CARRepo.new(archive_data) }.to raise_error(
@@ -63,7 +63,7 @@ describe Oxygene::CARRepo do
 
       section.should be_a(Oxygene::CARSection)
       section.cid.should == repo.roots.first
-      section.decoded_body["version"].should == 3
+      section.json_body["version"].should == 3
       section.should equal(repo.commit_section)
       repo.parsed_sections.should_not be_empty
     end

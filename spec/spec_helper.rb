@@ -10,6 +10,7 @@ unless ENV["GITHUB_ACTIONS"] == "true"
 end
 
 require "oxygene"
+require "cbor"
 
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure
@@ -18,4 +19,9 @@ RSpec.configure do |config|
   config.expect_with :rspec do |c|
     c.syntax = [:should, :expect]
   end
+end
+
+if ENV['NATIVE_CBOR']
+  $native_cbor = true
+  require_relative '../lib/oxygene/cbor_native'
 end

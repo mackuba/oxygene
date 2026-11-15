@@ -83,16 +83,19 @@ module Oxygene
     private_constant :DRISL_BINARY_PREFIX, :RAW_BINARY_PREFIX, :TAG_DRISL_BINARY_PREFIX, :TAG_RAW_BINARY_PREFIX
 
 
-    # Builds a CID from a CBOR tag 42 value.
+    # @deprecated
     #
-    # Expects a `CBOR::Tagged` object returned from `CBOR.decode` or `CBOR.decode_sequence`.
+    # Compatibility method that builds a CID from a CBOR tag 42 object from the `cbor` gem.
     #
-    # @param tag [CBOR::Tagged] tagged CBOR object containing binary CID data with identity (0) prefix
+    # Also accepts an existing {CID} object (and returns it unchanged).
+    #
+    # @param tag [CID, CBOR::Tagged] CID or a tag containing binary CID data with identity (0) prefix
     # @return [CID] CID object wrapping that content identifier
     # @raise [DecodeError] if the CID has an invalid size or is missing an expected prefix/suffix
     # @raise [UnsupportedError] if the CID is in a form that is technically valid, but not supported here
     #
     def self.from_cbor_tag(tag)
+      return tag if tag.is_a?(CID)
       CID.new(tag.value, binary: true, cbor_prefix: true)
     end
 
@@ -106,6 +109,24 @@ module Oxygene
     #
     def self.from_json(string)
       CID.new(string, binary: false)
+    end
+
+    # @api private
+    #
+    # Fast path for (binary: true, cbor_prefix: true) for CIDs returned by the CBOR parser.
+    #
+    # Avoids keyword argument allocation and some of the work done normally in the main #initialize.
+    #
+    # @param bytes [String] identity-prefixed CBOR bytes to parse the CID from
+    # @return [CID] CID object wrapping that identifier
+    #
+    def self.from_cbor_bytes(bytes)
+      if bytes.bytesize == 37 && bytes.start_with?(TAG_DRISL_BINARY_PREFIX, TAG_RAW_BINARY_PREFIX)
+        allocate.__send__(:initialize_cbor_form, bytes)
+      else
+        # reuse the standard initializer to diagnose invalid and unsupported CIDs
+        new(bytes, cbor_prefix: true)
+      end
     end
 
     # Creates a CID instance from binary/CBOR data or a JSON string form.
@@ -297,6 +318,13 @@ module Oxygene
       raise DecodeError.new("Unexpected CID trailing bits") unless canonical_trailing_bits
     end
 
+    # Fast path for (binary: true, cbor_prefix: true) for CIDs returned by the CBOR parser
+    #
+    def initialize_cbor_form(bytes)
+      @cbor_form = bytes.freeze
+      self
+    end
+
     def validate_binary_form(data, cbor_prefix, expected_codec)
       expected_length = cbor_prefix ? 37 : 36
       data_length = data.bytesize
@@ -305,13 +333,25 @@ module Oxygene
       raise DecodeError.new("CID too long: #{data}") if data_length > expected_length
 
       if cbor_prefix
-        raise DecodeError.new("Unexpected first byte of CID: #{data[0]}") unless data.getbyte(0) == 0
+        case expected_codec
+        when nil
+          return if data.start_with?(TAG_DRISL_BINARY_PREFIX, TAG_RAW_BINARY_PREFIX)
+        when DRISL_CODEC_ID
+          return if data.start_with?(TAG_DRISL_BINARY_PREFIX)
+        when RAW_CODEC_ID
+          return if data.start_with?(TAG_RAW_BINARY_PREFIX)
+        end
 
-        return if data.start_with?(TAG_DRISL_BINARY_PREFIX) && (expected_codec.nil? || expected_codec == DRISL_CODEC_ID)
-        return if data.start_with?(TAG_RAW_BINARY_PREFIX) && (expected_codec.nil? || expected_codec == RAW_CODEC_ID)
+        raise DecodeError.new("Unexpected first byte of CID: #{data.getbyte(0)}") unless data.getbyte(0) == 0
       else
-        return if data.start_with?(DRISL_BINARY_PREFIX) && (expected_codec.nil? || expected_codec == DRISL_CODEC_ID)
-        return if data.start_with?(RAW_BINARY_PREFIX) && (expected_codec.nil? || expected_codec == RAW_CODEC_ID)
+        case expected_codec
+        when nil
+          return if data.start_with?(DRISL_BINARY_PREFIX, RAW_BINARY_PREFIX)
+        when DRISL_CODEC_ID
+          return if data.start_with?(DRISL_BINARY_PREFIX)
+        when RAW_CODEC_ID
+          return if data.start_with?(RAW_BINARY_PREFIX)
+        end
       end
 
       # At this point we're rejecting the CID, we just check with what error message:

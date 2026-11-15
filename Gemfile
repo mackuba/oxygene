@@ -10,6 +10,7 @@ gem 'rake', '~> 13.0'
 
 gem 'rspec', '~> 3.0'
 gem 'simplecov', require: false
+gem 'cbor', '~> 0.6.1'
 
 gem 'benchmark', '~> 0.3.0'
 gem 'ruby-prof'

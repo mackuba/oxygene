@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
+require_relative 'cbor'
 require_relative 'errors'
 require_relative 'extensions'
 
-require 'cbor'
 require 'stringio'
 
 module Oxygene
@@ -59,8 +59,8 @@ module Oxygene
       end
 
       begin
-        metadata = CBOR.decode(header_data)
-      rescue StandardError
+        metadata = Oxygene::CBOR.decode(header_data)
+      rescue DecodeError, UnsupportedError
         raise DecodeError.new("Malformed CBOR data")
       end
 

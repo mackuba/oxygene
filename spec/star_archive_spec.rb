@@ -28,7 +28,7 @@ describe Oxygene::STARArchive do
   invalid_fixtures.each do |item|
     # TODO
     next if item['comment'].include?('non-canonical')
-    next if item['comment'].include?('invalid drisl')
+    next if item['comment'].include?('invalid drisl') && $native_cbor
 
     it "should reject '#{item['comment']}'" do
       hex = item['star_hex']
