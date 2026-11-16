@@ -28,8 +28,14 @@ describe Oxygene::CARSection do
 
       body['type'].should == "example"
       body['bytes'].should == "\x00\x01\x02\xFF".b
-      body['link'].should be_a(Oxygene::CID)
-      body['link'].cbor_form.should == cid_data
+
+      if Oxygene::CBOR.native_module?
+        body['link'].should be_a(::CBOR::Tagged)
+        body['link'].value.should == cid_data
+      else
+        body['link'].should be_a(Oxygene::CID)
+        body['link'].cbor_form.should == cid_data
+      end
     end
   end
 
@@ -49,7 +55,12 @@ describe Oxygene::CARSection do
       section.json_body
 
       decoded_body['bytes'].should == "\x00\x01\x02\xFF".b
-      decoded_body['link'].should be_a(Oxygene::CID)
+
+      if Oxygene::CBOR.native_module?
+        decoded_body['link'].should be_a(::CBOR::Tagged)
+      else
+        decoded_body['link'].should be_a(Oxygene::CID)
+      end
     end
   end
 

@@ -24,6 +24,13 @@ module Oxygene
 
   module CBOR
 
+    # Indicates if the adapter to the native C CBOR parser from the external `cbor` gem is loaded
+    # (default: false, until `oxygene/cbor_native` is required explicitly).
+    #
+    def self.native_module?
+      false
+    end
+
     # Decodes the given CBOR string as a single item.
     # The data must not contain any extra bytes after the decoded item.
     #

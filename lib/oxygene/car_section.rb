@@ -30,6 +30,9 @@ module Oxygene
     #
     # CID links are represented as {CID} objects, and byte strings as binary strings.
     #
+    # @note When the `oxygene/cbor_native` adapter for the native C module `cbor` gem is loaded,
+    #   CID links are returned as {CBOR::Tagged} objects instead.
+    #
     # @return [Object] section data decoded from CBOR
 
     def decoded_body
@@ -41,6 +44,7 @@ module Oxygene
     # The conversion involves:
     # - replacing binary strings with `$bytes` objects with Base64-encoded data
     # - wrapping {CID} values decoded from CBOR CID tags into `$link` objects
+    # - if `oxygene/cbor_native` adapter is loaded, also converting the CIDs from {CBOR::Tagged} objects first
     #
     # @return [Hash, Array] decoded ATProto JSON compatible body
     # @raise [DecodeError] if the decoded top-level value is not a hash or array

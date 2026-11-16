@@ -29,22 +29,36 @@ describe Oxygene::CBOR do
           not_valid_atproto[name]
         end
 
-        if error_reason
-          if $native_cbor
-            next unless %w[cid concat tags].include?(suite)
-            next if name == 'long CID tag'
-          end
+        if Oxygene::CBOR.native_module?
+          next unless %w[cid concat tags].include?(suite)
+          next if name == 'long CID tag'
 
-          it "should reject '#{name}' from #{suite}.json (#{error_reason})" do
-            binary = [item.fetch('data')].pack('H*')
+          if error_reason
+            it "should reject '#{name}' from #{suite}.json (#{error_reason})" do
+              binary = [item.fetch('data')].pack('H*')
 
-            expect { Oxygene::CBOR.decode(binary) }.to raise_error(Oxygene::Error)
+              expect { Oxygene::CBOR.decode(binary, json: true) }.to raise_error(Oxygene::Error)
+            end
+          else
+            it "should accept '#{name}' from #{suite}.json" do
+              binary = [item.fetch('data')].pack('H*')
+
+              expect { Oxygene::CBOR.decode(binary, json: true) }.not_to raise_error
+            end
           end
         else
-          it "should accept '#{name}' from #{suite}.json" do
-            binary = [item.fetch('data')].pack('H*')
+          if error_reason
+            it "should reject '#{name}' from #{suite}.json (#{error_reason})" do
+              binary = [item.fetch('data')].pack('H*')
 
-            expect { Oxygene::CBOR.decode(binary) }.not_to raise_error
+              expect { Oxygene::CBOR.decode(binary) }.to raise_error(Oxygene::Error)
+            end
+          else
+            it "should accept '#{name}' from #{suite}.json" do
+              binary = [item.fetch('data')].pack('H*')
+
+              expect { Oxygene::CBOR.decode(binary) }.not_to raise_error
+            end
           end
         end
       end
@@ -90,7 +104,7 @@ describe Oxygene::CBOR do
       out_of_range = out_of_range_integers.include?(name)
 
       if out_of_range
-        next if $native_cbor
+        next if Oxygene::CBOR.native_module?
 
         it "should reject #{name} (outside the signed 64-bit integer range)" do
           expect { Oxygene::CBOR.decode(File.binread(path), json: true) }.to raise_error(Oxygene::Error)

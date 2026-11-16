@@ -7,9 +7,14 @@ require_relative 'errors'
 
 module Oxygene
   module CBOR
+    def self.native_module?
+      true
+    end
+
     def self.decode(data, json: false)
       decoded = ::CBOR.decode(data)
-      convert_data(decoded, json)
+      decoded = convert_data(decoded) if json
+      decoded
     rescue EOFError, ::CBOR::UnpackError => e
       raise DecodeError, e.message
     end
@@ -21,7 +26,9 @@ module Oxygene
       items = []
 
       while !unpacker.buffer.empty?
-        items << convert_data(unpacker.read, json)
+        item = unpacker.read
+        item = convert_data(item) if json
+        items << item
       end
 
       items
@@ -29,12 +36,12 @@ module Oxygene
       raise DecodeError, e.message
     end
 
-    def self.convert_data(value, json_mode)
+    def self.convert_data(value)
       case value
       when Hash
-        value.transform_values! { |item| convert_data(item, json_mode) }
+        value.transform_values! { |item| convert_data(item) }
       when Array
-        value.map! { |item| convert_data(item, json_mode) }
+        value.map! { |item| convert_data(item) }
       when ::CBOR::Tagged
         raise UnsupportedError, "Only CBOR tag 42 (CID) is supported (got: #{value.tag})" unless value.tag == 42
 
@@ -48,13 +55,9 @@ module Oxygene
 
         cid = CID.from_cbor_bytes(bytes)
 
-        json_mode ? { '$link' => cid } : cid
+        { '$link' => cid }
       when String
-        if json_mode && value.encoding == Encoding::BINARY
-          Oxygene::CBOR.make_bytes(value)
-        else
-          value
-        end
+        (value.encoding == Encoding::BINARY) ? Oxygene::CBOR.make_bytes(value) : value
       else
         value
       end

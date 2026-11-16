@@ -92,6 +92,10 @@ module Oxygene
         return walk_all_nodes(tree_top_cid, &block)
       end
 
+      if @native_cbor
+        starting_node_cid = starting_node_cid.value if starting_node_cid.is_a?(::CBOR::Tagged)
+      end
+
       data = section_with_cid(starting_node_cid, use_map: true, return_body: false)&.decoded_body
       raise DecodeError, "MST node not found in the archive: #{starting_node_cid.inspect}" if data.nil?
 
@@ -117,7 +121,7 @@ module Oxygene
 
         previous = key
 
-        v = e['v']
+        v = @native_cbor ? CID.from_cbor_tag(e['v']) : e['v']
         raise DecodeError, "Repository MST value must be a CID (got: #{v.class})" unless v.is_a?(CID)
 
         block.call(key.freeze, v)

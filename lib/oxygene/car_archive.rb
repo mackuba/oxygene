@@ -51,6 +51,7 @@ module Oxygene
       @offset = 0
       @varint_reader = VarintReader.new(data)
       @map_needs_update = false
+      @native_cbor = Oxygene::CBOR.native_module?
 
       read_header
     end
@@ -204,11 +205,24 @@ module Oxygene
       raise DecodeError.new("Missing 'roots' field") if roots.nil?
       raise DecodeError.new("Invalid 'roots' field: #{roots.inspect}") unless roots.is_a?(Array)
 
-      roots.each do |root|
-        raise DecodeError, "Unexpected value in the roots array: #{root.inspect}" unless root.is_a?(CID)
+      if @native_cbor
+        @roots = header['roots'].map { |x|
+          if x.is_a?(::CBOR::Tagged) && x.tag == 42
+            CID.from_cbor_tag(x)
+          elsif x.is_a?(::CBOR::Tagged)
+            raise UnsupportedError.new("Only CBOR tag 42 (CID) is supported (got: #{x.tag})")
+          else
+            raise DecodeError.new("Unexpected value in the roots array: #{x.inspect}")
+          end
+        }.freeze
+      else
+        roots.each do |root|
+          raise DecodeError, "Unexpected value in the roots array: #{root.inspect}" unless root.is_a?(CID)
+        end
+
+        @roots = roots.freeze
       end
 
-      @roots = roots.freeze
       @offset = finish
     end
 

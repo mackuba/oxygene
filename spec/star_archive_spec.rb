@@ -28,7 +28,7 @@ describe Oxygene::STARArchive do
   invalid_fixtures.each do |item|
     comment = item['comment']
 
-    if $native_cbor
+    if Oxygene::CBOR.native_module?
       next if comment.include?('invalid drisl') || comment == 'non-canonical meta serialization'
     end
 

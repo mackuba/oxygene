@@ -22,6 +22,5 @@ RSpec.configure do |config|
 end
 
 if ENV['NATIVE_CBOR']
-  $native_cbor = true
   require_relative '../lib/oxygene/cbor_native'
 end

@@ -20,8 +20,13 @@ describe Oxygene::CBOR do
     it "should decode nested links, byte strings, and UTF-8 text" do
       decoded_link, values = Oxygene::CBOR.decode(record).fetch('a')
 
-      decoded_link.should be_a(Oxygene::CID)
-      decoded_link.cbor_form.should == drisl_cid
+      if Oxygene::CBOR.native_module?
+        decoded_link.should be_a(::CBOR::Tagged)
+        decoded_link.value.should == drisl_cid
+      else
+        decoded_link.should be_a(Oxygene::CID)
+        decoded_link.cbor_form.should == drisl_cid
+      end
 
       values.fetch('b').should == "\xfb\xff".b
       values.fetch('b').encoding.should == Encoding::BINARY
@@ -47,8 +52,13 @@ describe Oxygene::CBOR do
     it "should decode a raw-codec CID" do
       cid = Oxygene::CBOR.decode(cbor('d8 2a 58 25') + raw_cid)
 
-      cid.should be_a(Oxygene::CID)
-      cid.cbor_form.should == raw_cid
+      if Oxygene::CBOR.native_module?
+        cid.should be_a(::CBOR::Tagged)
+        cid.value.should == raw_cid
+      else
+        cid.should be_a(Oxygene::CID)
+        cid.cbor_form.should == raw_cid
+      end
     end
 
     it "should decode positive and negative 64-bit integers" do
@@ -72,24 +82,42 @@ describe Oxygene::CBOR do
       end
     end
 
-    it "should reject a tag 42 payload that is a text string or an integer" do
-      ['d8 2a 61 61', 'd8 2a 00'].each do |hex|
-        expect { Oxygene::CBOR.decode(cbor(hex)) }.to raise_error(Oxygene::DecodeError)
-      end
-    end
-
     it "should reject a truncated CID" do
       expect { Oxygene::CBOR.decode(link.byteslice(0...-1)) }.to raise_error(Oxygene::DecodeError)
     end
 
-    it "should reject a CID with an unsupported codec" do
-      data = cbor('d8 2a 58 25 00 01 72 12 20') + ("\x11".b * 32)
+    if Oxygene::CBOR.native_module?
+      it "should reject a tag 42 payload that is a text string or an integer" do
+        ['d8 2a 61 61', 'd8 2a 00'].each do |hex|
+          expect { Oxygene::CBOR.decode(cbor(hex), json: true) }.to raise_error(Oxygene::DecodeError)
+        end
+      end
 
-      expect { Oxygene::CBOR.decode(data) }.to raise_error(Oxygene::UnsupportedError)
-    end
+      it "should reject a CID with an unsupported codec" do
+        data = cbor('d8 2a 58 25 00 01 72 12 20') + ("\x11".b * 32)
 
-    it "should reject an unknown tag" do
-      expect { Oxygene::CBOR.decode(cbor('d8 64 00')) }.to raise_error(Oxygene::UnsupportedError)
+        expect { Oxygene::CBOR.decode(data, json: true) }.to raise_error(Oxygene::UnsupportedError)
+      end
+
+      it "should reject an unknown tag" do
+        expect { Oxygene::CBOR.decode(cbor('d8 64 00'), json: true) }.to raise_error(Oxygene::UnsupportedError)
+      end
+    else
+      it "should reject a tag 42 payload that is a text string or an integer" do
+        ['d8 2a 61 61', 'd8 2a 00'].each do |hex|
+          expect { Oxygene::CBOR.decode(cbor(hex)) }.to raise_error(Oxygene::DecodeError)
+        end
+      end
+
+      it "should reject a CID with an unsupported codec" do
+        data = cbor('d8 2a 58 25 00 01 72 12 20') + ("\x11".b * 32)
+
+        expect { Oxygene::CBOR.decode(data) }.to raise_error(Oxygene::UnsupportedError)
+      end
+
+      it "should reject an unknown tag" do
+        expect { Oxygene::CBOR.decode(cbor('d8 64 00')) }.to raise_error(Oxygene::UnsupportedError)
+      end
     end
   end
 
@@ -126,7 +154,7 @@ describe Oxygene::CBOR do
     end
   end
 
-  unless $native_cbor
+  unless Oxygene::CBOR.native_module?
     context "with the pure Ruby decoder" do
       it "should accept map keys sorted by UTF-8 byte length and then by bytes" do
         keys = Oxygene::CBOR.decode(cbor('a3 61 7a 00 62 6161 01 62 c3a9 02')).keys
