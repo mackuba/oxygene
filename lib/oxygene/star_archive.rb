@@ -13,8 +13,21 @@ module Oxygene
   class STARArchive
     MAGIC_PREFIX = "\x2A\x6C\x01\x00"
 
-    attr_reader :data_pairs, :data_map, :metadata
+    # @return [Array<Array<String>>] parsed sections as [key, value] pairs in the order as read from archive
+    attr_reader :data_pairs
 
+    # @return [Hash{String => String}] a map of parsed keys and values
+    attr_reader :data_map
+
+    # @return [Hash{String => Object}] metadata decoded from the archive header
+    attr_reader :metadata
+
+
+    # Parses a complete STAR archive from a given string.
+    #
+    # @param data [String] STAR archive as a binary string
+    # @raise [DecodeError] if the header or any data section is malformed or truncated
+    #
     def initialize(data)
       unless data.is_a?(String) && data.encoding == Encoding::BINARY
         raise ArgumentError, "data should be a binary string"
@@ -38,6 +51,7 @@ module Oxygene
       @varint_reader = nil
     end
 
+    # @return [String] representation of the archive for debugging
     def inspect
       vars = (instance_variables - [:@data_map, :@varint_reader]).map { |v|
         "#{v}=#{instance_variable_get(v).inspect}"
